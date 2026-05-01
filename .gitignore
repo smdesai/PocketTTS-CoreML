@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv-cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# CoreML build artifacts (Phase 3+; not for git)
+Artifacts/
+*.mlpackage/
+*.mlmodelc/
+
+# Generated golden bundles: derived from gated CC-BY-NC-SA weights.
+# Regenerate locally via `python -m pockettts_coreml.oracle.dump_golden`.
+pockettts_coreml/oracle/fixtures/english_alba_seed42/voice_embedding.safetensors
+pockettts_coreml/oracle/fixtures/english_alba_seed42/voice_reference.wav
+pockettts_coreml/oracle/fixtures/english_alba_seed42/golden/
+pockettts_coreml/oracle/fixtures/english_alba_seed42/metadata.json
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Claude agent internal state
+.claude/cache/
+.claude/settings.local.json
