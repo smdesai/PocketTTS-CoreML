@@ -31,21 +31,35 @@ FIXTURE_DIR = (
 
 
 def _fixture_ready() -> bool:
-    """A 'ready' fixture has voice + at least one golden tensor bundle."""
-    voice = FIXTURE_DIR / "voice_embedding.safetensors"
+    """A 'ready' fixture has a voice file (.wav or .safetensors) plus at
+    least one golden tensor bundle."""
     golden_dir = FIXTURE_DIR / "golden"
-    if not voice.exists() or not golden_dir.exists():
+    if not golden_dir.exists():
         return False
-    return any(golden_dir.glob("*.safetensors"))
+    has_voice = any(FIXTURE_DIR.glob("*.safetensors")) or any(
+        FIXTURE_DIR.glob("*.wav")
+    )
+    return has_voice and any(golden_dir.glob("*.safetensors"))
+
+
+def _hf_creds_available() -> bool:
+    """HF_TOKEN env var OR cached `huggingface-cli login` token."""
+    if os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"):
+        return True
+    try:
+        from huggingface_hub import HfFolder
+        return bool(HfFolder.get_token())
+    except Exception:
+        return False
 
 
 needs_oracle = pytest.mark.skipif(
     not (_fixture_ready() and os.environ.get("POCKETTTS_ORACLE_READY") == "1"
-         and os.environ.get("HF_TOKEN")),
+         and _hf_creds_available()),
     reason=(
-        "Oracle fixture or HF_TOKEN not available. Set HF_TOKEN + "
-        "POCKETTTS_ORACLE_READY=1 after running "
-        "`python -m pockettts_coreml.oracle.dump_golden`."
+        "Oracle fixture or HF credentials not available. Run "
+        "`python -m pockettts_coreml.oracle.dump_golden` after "
+        "`huggingface-cli login`, then set POCKETTTS_ORACLE_READY=1."
     ),
 )
 
@@ -91,8 +105,15 @@ def test_oracle_roundtrip_bitwise_identical(tmp_path: Path):
     scratch = tmp_path / "english_alba_seed42"
     scratch.mkdir(parents=True)
 
-    voice = FIXTURE_DIR / "voice_embedding.safetensors"
-    dump_golden(output_dir=scratch, voice_safetensors=voice)
+    # Find the voice file used for the committed fixture (either a .wav
+    # or a pre-exported .safetensors; metadata.json is authoritative).
+    golden_meta = json.loads((FIXTURE_DIR / "metadata.json").read_text())
+    voice = Path(golden_meta["voice_path"])
+    if not voice.is_absolute():
+        voice = FIXTURE_DIR / voice.name
+    assert voice.exists(), f"voice file referenced in metadata not found: {voice}"
+
+    dump_golden(output_dir=scratch, voice_path=voice)
 
     # Compare every stage bundle at atol=rtol=0. fp32 deterministic
     # reference + seeded RNG + 1 thread should be bitwise identical.
@@ -112,7 +133,7 @@ def test_oracle_roundtrip_bitwise_identical(tmp_path: Path):
     # metadata.json should also match in key fields (not full-file; the
     # generated_at_utc timestamp will differ, obviously).
     fresh_meta = json.loads((scratch / "metadata.json").read_text())
-    golden_meta = json.loads((FIXTURE_DIR / "metadata.json").read_text())
+    # `golden_meta` was read above for voice resolution; reuse it.
     for key in ("prompt", "voice_name", "seed", "lsd_decode_steps",
                 "temperature", "eos_threshold", "audio_samples",
                 "tokenizer_sha256"):

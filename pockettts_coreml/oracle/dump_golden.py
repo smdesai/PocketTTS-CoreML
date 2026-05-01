@@ -72,6 +72,17 @@ FIXTURE_NOISE_CLAMP = None  # reference default
 GATED_REPO = "kyutai/pocket-tts"
 GATED_LICENSE_URL = f"https://huggingface.co/{GATED_REPO}"
 
+_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "reference"
+
+
+def _ensure_reference_on_path() -> None:
+    """Add the vendored reference subtree to sys.path so `import pocket_tts`
+    resolves. Idempotent.
+    """
+    ref = str(_REFERENCE_DIR)
+    if ref not in sys.path:
+        sys.path.insert(0, ref)
+
 
 @dataclass
 class HookBundle:
@@ -91,19 +102,33 @@ def _abort(msg: str, code: int = 2) -> None:
     sys.exit(code)
 
 
-def _check_hf_token() -> str:
+def _check_hf_token() -> str | None:
+    """Return an HF token if env-provided, else fall back to the token
+    cached by `huggingface-cli login`. If neither is available, abort
+    with a helpful message.
+    """
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-    if not token:
-        _abort(
-            "ERROR: HF_TOKEN (or HUGGING_FACE_HUB_TOKEN) is not set.\n"
-            f"The English PocketTTS weights live behind a gated repo at\n"
-            f"  {GATED_LICENSE_URL}\n"
-            "You must (a) accept the license on that page while logged in\n"
-            "to HuggingFace and (b) provide a token via:\n"
-            "  export HF_TOKEN=hf_xxxxxxxxxxxxxxxx\n"
-            "See `README.md` for the full regeneration recipe."
-        )
-    return token  # type: ignore[return-value]
+    if token:
+        return token
+    # Fallback: the hf CLI stores the token under ~/.cache/huggingface/token
+    # (or ~/.huggingface/token on older versions). huggingface_hub will
+    # pick this up automatically.
+    try:
+        from huggingface_hub import HfFolder
+        cached = HfFolder.get_token()
+        if cached:
+            LOGGER.info("Using cached HF token from `huggingface-cli login`.")
+            return cached
+    except Exception:
+        pass
+    _abort(
+        "ERROR: no HuggingFace credentials available.\n"
+        f"The English PocketTTS weights are gated at {GATED_LICENSE_URL}\n"
+        "Accept the license there, then either:\n"
+        "  export HF_TOKEN=hf_xxxxxxxxxxxxxxxx\n"
+        "or run `huggingface-cli login` once.\n"
+    )
+    return None  # unreachable; _abort exits
 
 
 def _set_determinism(seed: int) -> None:
@@ -137,16 +162,16 @@ def _install_hooks(tts_model: Any) -> dict[str, HookBundle]:
     hooks after use (we return the handles via `tts_model._hook_handles`
     for convenience; see `_uninstall_hooks`).
     """
-    # Late import so `import pockettts_coreml` (without the reference
-    # subtree) still succeeds. Phase 1's package-importability gate is
-    # purely `import pockettts_coreml`; dump_golden is only callable once
-    # the subtree lands.
-    from pockettts_coreml.reference.pocket_tts.conditioners.text import LUTConditioner
-    from pockettts_coreml.reference.pocket_tts.models.mimi import MimiModel
-    from pockettts_coreml.reference.pocket_tts.modules.mimi_transformer import (
-        StreamingTransformer,
-    )
-    from pockettts_coreml.reference.pocket_tts.modules.mlp import SimpleMLPAdaLN
+    # Late import. The reference is a git subtree at
+    # pockettts_coreml/reference/ whose top-level Python package is
+    # `pocket_tts` (not `pockettts_coreml.reference.pocket_tts`). We add
+    # the subtree dir to sys.path on first use so `import pocket_tts`
+    # resolves, leaving the vendored tree untouched.
+    _ensure_reference_on_path()
+    from pocket_tts.conditioners.text import LUTConditioner
+    from pocket_tts.models.mimi import MimiModel
+    from pocket_tts.modules.mimi_transformer import StreamingTransformer
+    from pocket_tts.modules.mlp import SimpleMLPAdaLN
 
     bundles: dict[str, HookBundle] = {
         "text_conditioner": HookBundle(),
@@ -321,8 +346,9 @@ def dump_golden(
 
     # Late import. The reference subtree ships its own `torch.set_num_threads(1)`
     # on import, which harmlessly duplicates our call above.
+    _ensure_reference_on_path()
     try:
-        from pockettts_coreml.reference.pocket_tts.models.tts_model import TTSModel
+        from pocket_tts.models.tts_model import TTSModel
     except ImportError as exc:
         _abort(
             "ERROR: cannot import the reference TTSModel. The git subtree under\n"
