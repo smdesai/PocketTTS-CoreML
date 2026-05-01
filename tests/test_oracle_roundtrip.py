@@ -72,7 +72,7 @@ def test_dump_golden_help_runs():
     parser = _build_parser()
     help_text = parser.format_help()
     assert "dump_golden" in help_text
-    assert "--voice-safetensors" in help_text
+    assert "--voice" in help_text
     assert "--seed" in help_text
 
 

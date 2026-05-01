@@ -3,8 +3,9 @@
 This is Phase 1's central script. It:
 
 1. Loads the reference TTSModel (English, gated `kyutai/pocket-tts` weights).
-2. Loads the pre-exported `alba` voice from `voice_embedding.safetensors`
-   (produced out-of-band via the reference's `pocket-tts export_voice` CLI).
+2. Loads the `alba` voice reference (default: `voice_reference.wav`,
+   exercising mimi_encoder + flow_lm prefill per Phase-1 scope; a
+   pre-exported `.safetensors` is also accepted via `--voice`).
 3. Runs a single fixed prompt under a fixed seed with `torch.set_num_threads(1)`.
 4. Registers `register_forward_hook` callbacks at the 5 submodel boundaries
    (text_conditioner, flow_lm_main, flow_lm_flow, mimi_encoder, mimi_decoder)
@@ -35,7 +36,7 @@ anonymous download.
 Usage:
     export HF_TOKEN=hf_...
     python -m pockettts_coreml.oracle.dump_golden \
-        --voice-safetensors path/to/alba.safetensors \
+        --voice path/to/alba.wav \
         [--output-dir fixtures/english_alba_seed42]
 """
 
@@ -309,7 +310,7 @@ def _tokenizer_hash(tts_model: Any) -> str | None:
 
 def dump_golden(
     output_dir: Path,
-    voice_safetensors: Path,
+    voice_path: Path,
     prompt: str = FIXTURE_PROMPT,
     seed: int = FIXTURE_SEED,
     lsd_decode_steps: int = FIXTURE_LSD_DECODE_STEPS,
@@ -354,9 +355,14 @@ def dump_golden(
         # RNG draws during model load.
         torch.manual_seed(seed)
 
-        LOGGER.info("Loading voice embedding from %s ...", voice_safetensors)
+        LOGGER.info("Loading voice reference from %s ...", voice_path)
+        # get_state_for_audio_prompt accepts both `.wav` (Path -> runs
+        # mimi_encoder + flow_lm prefill, see tts_model.py:878-899) and
+        # `.safetensors` (skips encoder via _import_model_state,
+        # tts_model.py:1054-1071). We prefer .wav for Phase 1 so the
+        # mimi_encoder golden bundle is populated.
         model_state = tts_model.get_state_for_audio_prompt(
-            audio_conditioning=str(voice_safetensors),
+            audio_conditioning=voice_path,
         )
 
         LOGGER.info("Generating audio for fixture prompt...")
@@ -395,7 +401,8 @@ def dump_golden(
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "prompt": prompt,
         "voice_name": FIXTURE_VOICE_NAME,
-        "voice_safetensors": str(voice_safetensors),
+        "voice_path": str(voice_path),
+        "voice_path_kind": voice_path.suffix.lower().lstrip("."),
         "seed": seed,
         "lsd_decode_steps": lsd_decode_steps,
         "temperature": FIXTURE_TEMPERATURE,
@@ -418,13 +425,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python -m pockettts_coreml.oracle.dump_golden",
         description=(
             "Regenerate the per-stage golden bundle for the English PocketTTS "
-            "port. Requires HF_TOKEN in env and a pre-exported voice .safetensors. "
-            "Outputs go under --output-dir (default: the fixture path shipped with "
-            "this repo)."
+            "port. Requires HF_TOKEN in env and a voice reference (.wav or "
+            ".safetensors) via --voice. Outputs go under --output-dir "
+            "(default: the fixture path shipped with this repo)."
         ),
     )
     default_out = Path(__file__).parent / "fixtures" / "english_alba_seed42"
-    default_voice = default_out / "voice_embedding.safetensors"
+    default_voice = default_out / "voice_reference.wav"
     p.add_argument(
         "--output-dir",
         type=Path,
@@ -432,12 +439,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Fixture directory (default: {default_out}).",
     )
     p.add_argument(
-        "--voice-safetensors",
+        "--voice",
+        dest="voice_path",
         type=Path,
         default=default_voice,
         help=(
-            "Path to a pre-exported voice .safetensors (produced by the "
-            f"reference's `pocket-tts export_voice` CLI). Default: {default_voice}."
+            "Path to a voice reference. Accepts either a raw .wav "
+            "(exercises mimi_encoder + flow_lm prefill, matches Phase 3.4 "
+            f"runtime path) or a pre-exported .safetensors (skips encoder; "
+            f"faster). Default: {default_voice}."
         ),
     )
     p.add_argument(
@@ -469,18 +479,22 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    if not args.voice_safetensors.exists():
+    if not args.voice_path.exists():
         _abort(
-            f"ERROR: voice safetensors not found at {args.voice_safetensors}.\n"
-            "Export it with the reference CLI (after HF_TOKEN is set and the\n"
+            f"ERROR: voice reference not found at {args.voice_path}.\n"
+            "For Phase 1 we want a .wav so mimi_encoder fires and gets captured.\n"
+            "Download alba's reference clip (after HF_TOKEN is set and the\n"
             f"license at {GATED_LICENSE_URL} is accepted):\n"
-            "  pocket-tts export_voice hf://kyutai/tts-voices/alba-mackenna/casual.wav "
-            f"{args.voice_safetensors}\n"
+            "  huggingface-cli download kyutai/tts-voices \\\n"
+            "    expresso/ex03-ex01_happy_001_channel1_334s.wav \\\n"
+            f"    --local-dir {args.voice_path.parent} \\\n"
+            f"  && mv {args.voice_path.parent}/expresso/*.wav {args.voice_path}\n"
+            "Or pass an existing .wav / pre-exported .safetensors via --voice.\n"
         )
 
     dump_golden(
         output_dir=args.output_dir,
-        voice_safetensors=args.voice_safetensors,
+        voice_path=args.voice_path,
         prompt=args.prompt,
         seed=args.seed,
         lsd_decode_steps=args.lsd_decode_steps,
