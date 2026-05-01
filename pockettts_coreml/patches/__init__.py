@@ -44,6 +44,15 @@ from pockettts_coreml.patches.mimi_patched import (
     PatchedStreamingConv1d,
     PatchedStreamingConvTranspose1d,
 )
+from pockettts_coreml.patches.mimi_model_patched import (
+    DecoderStateLayout,
+    PatchedMimiDecoder,
+    PatchedMimiTransformer,
+    PatchedProjectedTransformer,
+    PatchedSEANetDecoder,
+    PatchedSEANetEncoder,
+    compute_decoder_state_layout_from_ref,
+)
 from pockettts_coreml.patches.mlp_patched import PatchedSimpleMLPAdaLN
 from pockettts_coreml.patches.rope_patched import (
     apply_rope,
@@ -71,6 +80,12 @@ __all__ = [
     "PatchedFlowLMFlow",
     "PatchedStreamingConv1d",
     "PatchedStreamingConvTranspose1d",
+    "PatchedSEANetEncoder",
+    "PatchedSEANetDecoder",
+    "PatchedProjectedTransformer",
+    "PatchedMimiTransformer",
+    "PatchedMimiDecoder",
+    "DecoderStateLayout",
     # RoPE
     "build_rope_tables",
     "slice_rope_tables",

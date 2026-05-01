@@ -122,13 +122,21 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         D = self.dim_per_head
 
         # IMPORTANT trace-compat: do NOT extract B/T from x.shape as
-        # Python ints (that produces `aten::Int`). Use `unflatten` with
-        # literal ints to split the last-dim of the projection.
+        # Python ints (that produces `aten::Int`).
+        #
+        # IMPORTANT CoreML bug: we use `torch.chunk(3, dim=-1)` rather than
+        # `unflatten(-1, (3, H, D)); [:, :, 0|1|2]`. CoreML's converter
+        # contains an optimization pass that detects the
+        # "unflatten + slice into 3 along middle dim" pattern as a fused
+        # QKV projection and mistakenly applies apply_rope's cos/sin
+        # multiply to V as well as Q/K. The bug manifests as V drifting
+        # dim-wise (verified 2026-05-01 on coremltools 8.1). `chunk`
+        # breaks the pattern and lowers to three separate slices.
         projected = self.in_proj(x)  # [B, T, 3*H*D]
-        packed = projected.unflatten(-1, (3, H, D))  # [B, T, 3, H, D]
-        q = packed[:, :, 0]  # [B, T, H, D]
-        k = packed[:, :, 1]
-        v = packed[:, :, 2]
+        q_flat, k_flat_, v_flat = projected.chunk(3, dim=-1)  # each [B, T, H*D]
+        q = q_flat.unflatten(-1, (H, D))  # [B, T, H, D]
+        k = k_flat_.unflatten(-1, (H, D))
+        v = v_flat.unflatten(-1, (H, D))
 
         # RoPE on Q and K, using pre-computed tables.
         q, k = apply_rope(q, k, rope_cos, rope_sin)
@@ -155,9 +163,12 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         v_attn = cache_v_new.permute(0, 2, 1, 3)
         q_attn = q.permute(0, 2, 1, 3)  # [B, H, T, D]
 
-        x_attn = F.scaled_dot_product_attention(
-            q_attn, k_attn, v_attn, attn_mask=attn_mask, dropout_p=0.0, is_causal=False
-        )
+        # Manual SDPA (see forward_prefill for rationale).
+        scale = 1.0 / math.sqrt(D)
+        scores = torch.matmul(q_attn, k_attn.transpose(-2, -1)) * scale
+        scores = scores + attn_mask
+        probs = F.softmax(scores, dim=-1)
+        x_attn = torch.matmul(probs, v_attn)
         # [B, H, T, D] -> [B, T, H, D] -> [B, T, H*D].  `flatten(-2)`
         # merges the last two axes without reading shape as Python ints.
         x_out = x_attn.permute(0, 2, 1, 3).flatten(-2)
@@ -186,16 +197,26 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         D = self.dim_per_head
 
         projected = self.in_proj(x)
-        packed = projected.unflatten(-1, (3, H, D))
-        q = packed[:, :, 0]
-        k = packed[:, :, 1]
-        v = packed[:, :, 2]
+        # See forward() above for rationale on chunk vs unflatten+slice.
+        q_flat, k_flat_, v_flat = projected.chunk(3, dim=-1)
+        q = q_flat.unflatten(-1, (H, D))
+        k = k_flat_.unflatten(-1, (H, D))
+        v = v_flat.unflatten(-1, (H, D))
         q, k = apply_rope(q, k, rope_cos, rope_sin)
 
         # scatter_mask: [B, S, T_q]. For each position s, place a
-        # weighted sum of new k rows.
-        new_k = torch.einsum("bsj,bjhd->bshd", scatter_mask, k)
-        new_v = torch.einsum("bsj,bjhd->bshd", scatter_mask, v)
+        # weighted sum of new k rows. We use matmul instead of einsum —
+        # einsum compiles to an unstable path under CoreML FP16 for this
+        # batched reduction (produces NaN on CPU_ONLY). `bsj @ bj(h*d) ->
+        # bs(h*d)` is numerically identical but lowers to a standard
+        # batched matmul that CoreML handles cleanly.
+        #
+        # Use `flatten(-2)` / `unflatten(-1, (H, D))` to avoid any Python-
+        # int shape arithmetic (traceable with no aten::Int).
+        k_flat = k.flatten(-2)  # [B, T_q, H*D]
+        v_flat = v.flatten(-2)
+        new_k = torch.matmul(scatter_mask, k_flat).unflatten(-1, (H, D))  # [B, S, H, D]
+        new_v = torch.matmul(scatter_mask, v_flat).unflatten(-1, (H, D))
 
         # "keep" mask = 1 everywhere except slots that had any j=1 written.
         written = scatter_mask.sum(dim=-1, keepdim=False)  # [B, S]
@@ -211,9 +232,18 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         v_attn = cache_v_new.permute(0, 2, 1, 3)
         q_attn = q.permute(0, 2, 1, 3)
 
-        x_attn = F.scaled_dot_product_attention(
-            q_attn, k_attn, v_attn, attn_mask=attn_mask, dropout_p=0.0, is_causal=False
-        )
+        # Manual SDPA. `F.scaled_dot_product_attention` compiles to a
+        # CoreML fp16 codepath that produces NaN on additive masks
+        # containing large-magnitude values (-65500) — verified on CPU_ONLY
+        # with coremltools 8.1 / iOS18 target. The manual form lowers to
+        # matmul+add+softmax+matmul and is numerically stable.
+        # `D` is a Python-int class attribute (= self.dim_per_head) so
+        # the scale is baked into the trace as a constant.
+        scale = 1.0 / math.sqrt(D)
+        scores = torch.matmul(q_attn, k_attn.transpose(-2, -1)) * scale
+        scores = scores + attn_mask
+        probs = F.softmax(scores, dim=-1)
+        x_attn = torch.matmul(probs, v_attn)
         x_out = x_attn.permute(0, 2, 1, 3).flatten(-2)
         x_out = self.out_proj(x_out)
         return x_out, kv_cache_out
