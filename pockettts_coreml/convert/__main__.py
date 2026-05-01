@@ -5,14 +5,17 @@ Usage:
     python -m pockettts_coreml.convert --only flow_lm_main
     python -m pockettts_coreml.convert --only text_conditioner --only flow_lm_flow
 
-Status in this cycle (see individual convert_*.py module docstrings
-for details):
-    text_conditioner  GREEN  (runs, converts, fp16 spot-check passes)
-    flow_lm_main      GREEN  (runs, converts, shape spot-check passes)
-    flow_lm_flow      GREEN  (runs, converts, fp16 spot-check passes)
-    mimi_encoder      YELLOW (conversion blocked on StreamingMultiheadAttention
-                              int32->inverse; docstring has the plan)
-    mimi_decoder      YELLOW (deferred; docstring has the plan)
+Status (all GREEN as of 2026-05-01, see individual convert_*.py
+module docstrings for per-submodel details):
+    text_conditioner  GREEN  (fp16; 8 MB)
+    flow_lm_main      GREEN  (fp16; 144 MB; rank-5 KV I/O)
+    flow_lm_flow      GREEN  (fp16; 19 MB; num_steps=1)
+    mimi_encoder      GREEN  (fp16; 20 MB; static T_audio=96000)
+    mimi_decoder      GREEN  (fp32; 39 MB; single packed-state blob,
+                              s_cap=1024 transformer KV)
+
+The `--include-yellow` flag is retained for historical symmetry but
+has no effect — both Mimi packages are part of the default `--all`.
 """
 from __future__ import annotations
 

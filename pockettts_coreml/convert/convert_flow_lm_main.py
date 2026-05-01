@@ -37,6 +37,8 @@ import coremltools as ct
 import torch
 import torch.nn as nn
 
+import os as _os
+
 from pockettts_coreml.convert import ARTIFACTS_DIR
 from pockettts_coreml.convert._common import (
     convert_and_save,
@@ -137,8 +139,18 @@ def convert(save_path: Path, spot_offset: int = 3) -> None:
         ct.TensorType(name="eos_logit"),
         ct.TensorType(name="kv_cache_out"),
     ]
+    # Optional FP32 override for accuracy testing: set
+    # POCKETTTS_FLOW_MAIN_FP32=1 to convert with float32 compute
+    # precision. Produces a ~2x-larger .mlpackage but gives 20+ dB
+    # audio PSNR headroom for the end-to-end gate during development.
+    precision = (
+        ct.precision.FLOAT32
+        if _os.environ.get("POCKETTTS_FLOW_MAIN_FP32", "0") == "1"
+        else ct.precision.FLOAT16
+    )
     mlmodel = convert_and_save(
         traced, inputs=inputs, outputs=outputs, save_path=save_path, name="flow_lm_main",
+        precision=precision,
     )
 
     # fp16 spot-check at the same sample inputs.
