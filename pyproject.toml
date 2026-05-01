@@ -1,0 +1,69 @@
+[project]
+name = "pockettts-coreml"
+version = "0.0.1"
+description = "CoreML port of Kyutai's PocketTTS (English) targeting ANE + CPU"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+
+# Notes:
+# - torch range matches the reference repo's `torch>=2.5.0` floor (see
+#   pockettts_coreml/reference/pyproject.toml line 10 after subtree-add).
+#   Upper bound <2.8 keeps us compatible with coremltools 8.1.
+# - coremltools is pinned exactly because 9.0b1 bumps deployment target
+#   to iOS 26. Phase 1 doesn't use it yet, but we pin here so contributors
+#   don't accidentally pull 9.x.
+# - numpy>=2 matches the reference.
+# - sentencepiece pulls in the tokenizer used by LUTConditioner.
+# - safetensors is the serialization format for golden dumps and voice files.
+# - soundfile is an optional dep of the reference (`audio` extra) but we
+#   need it for writing the golden wav.
+dependencies = [
+    "torch>=2.5.0,<2.8",
+    "coremltools==8.1",
+    "numpy>=2",
+    "safetensors>=0.4.0",
+    "sentencepiece>=0.2.1",
+    "scipy>=1.5.0",
+    "einops>=0.4.0",
+    "pydantic>=2",
+    "huggingface_hub>=0.13.0",
+    "beartype>=0.22.5",
+    "typer>=0.10.0",
+    "typing_extensions>=4.0.0",
+    "requests>=2.20.0",
+    "soundfile>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-xdist>=3.8.0",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# reference/ is included so the subtree is installable when the conversion
+# package is installed elsewhere (e.g. inside CI). Phase 1 runs from the
+# source tree so this mostly matters for later phases.
+packages = ["pockettts_coreml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
