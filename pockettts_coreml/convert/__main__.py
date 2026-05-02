@@ -29,7 +29,7 @@ from pockettts_coreml.convert._common import setup_logging
 
 LOGGER = logging.getLogger("pockettts_coreml.convert.__main__")
 
-_GREEN = ("text_conditioner", "flow_lm_main", "flow_lm_flow")
+_GREEN = ("text_conditioner", "flow_lm_main", "flow_lm_prefill", "flow_lm_flow")
 _YELLOW = ("mimi_encoder", "mimi_decoder")
 _ALL = _GREEN + _YELLOW
 
@@ -44,6 +44,9 @@ def _run_one(name: str, include_yellow: bool) -> tuple[bool, str]:
         elif name == "flow_lm_main":
             from pockettts_coreml.convert.convert_flow_lm_main import convert
             convert(ARTIFACTS_DIR / "flow_lm_main.mlpackage")
+        elif name == "flow_lm_prefill":
+            from pockettts_coreml.convert.convert_flow_lm_prefill import convert
+            convert(ARTIFACTS_DIR / "flow_lm_prefill.mlpackage")
         elif name == "flow_lm_flow":
             from pockettts_coreml.convert.convert_flow_lm_flow import convert
             convert(ARTIFACTS_DIR / "flow_lm_flow.mlpackage")
