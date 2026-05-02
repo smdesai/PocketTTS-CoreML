@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os as _os
 from pathlib import Path
 
 import coremltools as ct
@@ -132,7 +133,11 @@ def convert(save_path: Path, s_cap: int = DEFAULT_S_CAP) -> None:
         ],
         save_path=save_path,
         name="mimi_decoder",
-        precision=ct.precision.FLOAT32,
+        precision=(
+            ct.precision.FLOAT16
+            if _os.environ.get("POCKETTTS_MIMI_DECODER_FP16", "0") == "1"
+            else ct.precision.FLOAT32
+        ),
         compute_units=ct.ComputeUnit.CPU_ONLY,
     )
 

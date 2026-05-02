@@ -14,7 +14,6 @@
 		8AEE08FED45C2CB6798B1D88 /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */; };
 		AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C558F4562A2F0D78FC9C88A8 /* ContentView.swift */; };
 		BF3A4671AD9DCCDFE8059353 /* Artifacts in Resources */ = {isa = PBXBuildFile; fileRef = B9F7A1BE86A6A400B41A640F /* Artifacts */; };
-		C54D99273FB3AD5A8128B5A5 /* VoicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6598F44AECA129A4C6BFEFA3 /* VoicePickerView.swift */; };
 		DFA0256A139D0EF6D51130AF /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 5BFA6417318D8A26B3B9B3E5 /* PocketTTSCoreML */; };
 		FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95338D23F36161FB31B3904D /* StreamingPlayer.swift */; };
 /* End PBXBuildFile section */
@@ -175,7 +174,6 @@
 				FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */,
 				72B2729E46166DC257EAE4A5 /* TTSViewModel.swift in Sources */,
 				8AEE08FED45C2CB6798B1D88 /* VoiceCatalog.swift in Sources */,
-				C54D99273FB3AD5A8128B5A5 /* VoicePickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

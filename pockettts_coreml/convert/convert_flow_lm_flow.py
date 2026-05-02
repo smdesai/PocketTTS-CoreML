@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os as _os
 from pathlib import Path
 
 import coremltools as ct
@@ -72,6 +73,13 @@ def convert(save_path: Path) -> None:
     example_inputs = (c, s, t, x)
     traced = trace_module(wrap, example_inputs, "flow_lm_flow")
 
+    # Optional FP32 override (diagnostic; matches the main/prefill convert
+    # scripts' POCKETTTS_FLOW_*_FP32 flags for drift-localization work).
+    precision = (
+        ct.precision.FLOAT32
+        if _os.environ.get("POCKETTTS_FLOW_FLOW_FP32", "0") == "1"
+        else ct.precision.FLOAT16
+    )
     mlmodel = convert_and_save(
         traced,
         inputs=[
@@ -83,6 +91,7 @@ def convert(save_path: Path) -> None:
         outputs=[ct.TensorType(name="next_latent")],
         save_path=save_path,
         name="flow_lm_flow",
+        precision=precision,
     )
 
     # fp16 spot-check (atol=1e-3 per plan; small 512-wide 6-block MLP).
