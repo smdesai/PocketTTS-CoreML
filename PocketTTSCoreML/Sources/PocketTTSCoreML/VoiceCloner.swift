@@ -67,24 +67,47 @@ public final class VoiceCloner: @unchecked Sendable {
             ])
         }
 
-        // Bundle latents into a voice-only handle. We express it as a layer-0
-        // placeholder cache so `save` can stash the bytes. This bundle is NOT
-        // directly usable for `generate` — Phase 4B.
+        // Clone output carries the Mimi latents for downstream packing.
+        // `cloneVoice` is a two-stage pipeline — mimi_encoder here, then
+        // a flow_lm pass over the latents (via the reference Python
+        // helper or a future Swift port) to produce the final voice KV.
+        // Until that second stage is written, we return a zero-filled
+        // voice-only handle and expose the latents via the bundled URL
+        // metadata so the CLI can save them for an offline prefill.
         let n = latentsMA.count
         var floats = [Float](repeating: 0, count: n)
-        // latents are fp16.
         let srcPtr = latentsMA.dataPointer.bindMemory(to: UInt16.self, capacity: n)
         floats.withUnsafeMutableBufferPointer { dst in
             Float16Ops.convertFp16ToFp32(srcPtr: srcPtr, dstPtr: dst.baseAddress!, count: n)
         }
-        // Persist to a file-backed LayerCache — shape [2, 1, N, 1, 1] is a sentinel.
-        // The caller is expected to save + run `export_full_prefill.py`.
-        let placeholder = VoiceHandle.LayerCache(cache: floats, offset: 0, tVoice: n)
+        self.lastLatents = floats  // for CLI save-after-clone
+
+        // Zero-filled KV; voice_offset=0 is the signal that this handle
+        // isn't directly playable — the CLI catches this before calling
+        // `generate`.
+        let shape: [NSNumber] = [
+            NSNumber(value: 2 * PocketTTSArch.flowLayers), 1,
+            NSNumber(value: PocketTTSArch.flowSCap),
+            NSNumber(value: PocketTTSArch.flowHeads),
+            NSNumber(value: PocketTTSArch.flowHeadDim),
+        ]
+        let placeholderKV = try MLMultiArray(shape: shape, dataType: .float16)
+        let total = placeholderKV.count
+        let dst = placeholderKV.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+        for i in 0..<total { dst[i] = 0 }
         return VoiceHandle(
-            kind: .voiceOnly(layers: [placeholder], bosEmb: nil),
+            kind: .voiceOnly(
+                flowKVRank5: MLMultiArrayBox(placeholderKV),
+                voiceOffset: 0,
+                bosEmb: nil
+            ),
             sourceURL: audioURL
         )
     }
+
+    /// Latents from the last clone(...) call. Exposed for the CLI's
+    /// intermediate-bundle save path.
+    public private(set) var lastLatents: [Float]? = nil
 
     // MARK: - Audio loading
 

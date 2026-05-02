@@ -72,6 +72,74 @@ public enum Masks {
         return arr
     }
 
+    // MARK: - Padded prefill helpers (flow_lm_prefill.mlpackage)
+
+    /// Scatter mask for the padded flow_lm_prefill graph.
+    ///
+    /// Shape `[1, sCapacity, sTextPad]`. Column `j` for `j in [0, sText)`
+    /// is one-hot at row `startOffset + j`; columns `j in [sText, sTextPad)`
+    /// are zero (padding — their rows in text_embeddings are also zero/
+    /// ignored, and a zero column leaves the KV cache untouched at every
+    /// slot). Matches the `_build_example_inputs` construction in
+    /// `convert_flow_lm_prefill.py`.
+    public static func scatterPrefillMaskFp16Padded(
+        startOffset: Int, sText: Int, sTextPad: Int, sCapacity: Int
+    ) throws -> MLMultiArray {
+        precondition(sText <= sTextPad)
+        precondition(startOffset + sText <= sCapacity)
+        let shape: [NSNumber] = [
+            1, NSNumber(value: sCapacity), NSNumber(value: sTextPad),
+        ]
+        let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        let total = sCapacity * sTextPad
+        let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+        for i in 0..<total { ptr[i] = 0 }
+        let oneBits = fp32ToFp16Bits(1.0)
+        for j in 0..<sText {
+            let row = startOffset + j
+            ptr[row * sTextPad + j] = oneBits
+        }
+        return arr
+    }
+
+    /// Additive attention mask for the padded flow_lm_prefill graph.
+    ///
+    /// Shape `[1, 1, sTextPad, sCapacity]`. Rows `i in [0, sText)` are
+    /// causal over `[0, startOffset + i]`. Rows `i in [sText, sTextPad)`
+    /// copy the last real row (i = sText - 1) so softmax stays finite
+    /// — since their scatter columns are zero, they don't mutate the KV.
+    public static func additiveAttentionMaskPrefillFp16Padded(
+        startOffset: Int, sText: Int, sTextPad: Int, sCapacity: Int
+    ) throws -> MLMultiArray {
+        precondition(sText > 0 && sText <= sTextPad)
+        precondition(startOffset + sText <= sCapacity)
+        let shape: [NSNumber] = [
+            1, 1, NSNumber(value: sTextPad), NSNumber(value: sCapacity),
+        ]
+        let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        let total = sTextPad * sCapacity
+        let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+        let negBits = fp32ToFp16Bits(attnMaskNeg)
+        let zeroBits: UInt16 = 0
+        // Fill all masked.
+        for i in 0..<total { ptr[i] = negBits }
+        // Real rows: causal window.
+        for i in 0..<sText {
+            let pos = startOffset + i
+            for k in 0...pos { ptr[i * sCapacity + k] = zeroBits }
+        }
+        // Padding rows: copy last real row (i = sText - 1). Use memcpy
+        // for speed.
+        let lastRowBase = (sText - 1) * sCapacity
+        for i in sText..<sTextPad {
+            let dstBase = i * sCapacity
+            memcpy(ptr.advanced(by: dstBase),
+                   ptr.advanced(by: lastRowBase),
+                   sCapacity * MemoryLayout<UInt16>.stride)
+        }
+        return arr
+    }
+
     @inline(__always)
     static func fp32ToFp16Bits(_ f: Float) -> UInt16 {
         var input = f

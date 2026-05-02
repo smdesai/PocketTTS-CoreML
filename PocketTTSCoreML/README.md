@@ -1,24 +1,27 @@
 # PocketTTSCoreML — Swift runtime for the English PocketTTS CoreML port
 
-This Swift Package loads the five `.mlpackage` bundles in
+This Swift Package loads the six `.mlpackage` bundles in
 `Artifacts/en_alba_fp16/` and produces 24 kHz mono int16 PCM, streaming
 from Apple Neural Engine / GPU / CPU via CoreML.
 
-**Status:** Phase 4A (macOS 14+). iOS 18+ is declared in `Package.swift`
-so Phase 4B can enable it without restructuring the manifest.
+**Status:** Phase 4B (macOS 14+) — text prefill runs in Swift; no
+Python helper required for generation. iOS 18+ is declared in
+`Package.swift` but not yet exercised.
 
 ## Requirements
 
 - macOS 14 or newer.
 - Xcode 16 / Swift toolchain ≥ 6.0 (the package pins
   `swift-tools-version:6.0` so it can declare `.iOS(.v18)`).
-- The 5 `.mlpackage` bundles in `Artifacts/en_alba_fp16/` plus the
-  sidecar `mimi_decoder.state_layout.json`. Regenerate via
+- The 6 `.mlpackage` bundles in `Artifacts/en_alba_fp16/` plus the
+  sidecar `mimi_decoder.state_layout.json` and
+  `flow_lm_bos_emb.safetensors`. Regenerate via
   `python -m pockettts_coreml.convert --all`.
 - A SentencePiece tokenizer model (`tokenizer.model` from the
   `kyutai/pocket-tts` HF repo).
-- A voice `.safetensors` bundle — either pre-exported by
-  `pocket-tts export_voice` (voice-only) or **pre-prefilled** (see below).
+- A voice `.safetensors` bundle — either raw (e.g. `alba.safetensors`
+  from the kyutai HF repo) or a pre-prefilled one for cached voice+prompt
+  pairs (see below).
 
 ## Build
 
@@ -30,41 +33,6 @@ swift build -c release     # release
 swift test                 # runs all tests; uses fixtures under ../pockettts_coreml/oracle/fixtures/
 ```
 
-## Phase 4A limitation — text prefill runs in Python
-
-The currently-shipped `flow_lm_main.mlpackage` is AR-only: it takes a
-single-step `sequence: fp16[1,1,32]` and has **no** `text_embeddings`
-input. Text prefill in the Python reference driver
-(`pockettts_coreml/e2e/generator.py`) is performed by the *reference
-PyTorch* `StreamingTransformer`, not CoreML. Porting that prefill into
-Swift means writing a 6-layer transformer in `MLMultiArray` ops by hand
-(~800 lines) or adding a dedicated `flow_lm_prefill.mlpackage` to the
-Phase-3 conversion pipeline.
-
-Neither is in Phase 4A scope. Until then, the Swift side loads a
-"pre-prefilled" voice+text bundle produced by a Python helper:
-
-```bash
-python -m pockettts_coreml.e2e.export_full_prefill \
-    --voice pockettts_coreml/oracle/fixtures/english_alba_seed42/alba.safetensors \
-    --prompt "Pocket TTS is a lightweight text-to-speech model." \
-    --out   pockettts_coreml/oracle/fixtures/english_alba_seed42/alba_prefilled.safetensors \
-    --seed 42
-```
-
-The resulting bundle contains:
-- `flow_kv_rank5`: `fp32[12, 1, 256, 16, 64]` — rank-5 KV cache after
-  voice + text prefill.
-- `flow_offset`: `int64[1]` — write position after prefill.
-- `bos_emb`: `fp32[32]` — latent for AR step 0.
-- `prompt_utf8`: the prompt bytes (debug only).
-- `noise_seq`: `fp32[MAX_STEPS, 32]` — precomputed per-step noise
-  matching the reference's RNG trajectory (so Swift generation is
-  bit-repro of Python output).
-
-`PocketTTS.loadVoice` auto-detects voice-only vs pre-prefilled bundles.
-See `Orchestrator.swift` for the full design rationale.
-
 ## Public API
 
 ```swift
@@ -75,8 +43,9 @@ let tts = try await PocketTTS(
     tokenizerPath:   URL(fileURLWithPath: "tokenizer.model"),
     computeUnits:    .cpuAndNeuralEngine
 )
+// Load the raw voice file — Swift handles the text prefill.
 let voice = try await tts.loadVoice(
-    from: URL(fileURLWithPath: "alba_prefilled.safetensors")
+    from: URL(fileURLWithPath: "alba.safetensors")
 )
 var pcm = Data()
 for try await frame in await tts.generate(
@@ -88,8 +57,25 @@ for try await frame in await tts.generate(
 try AudioStream.writeWAV(pcm, to: URL(fileURLWithPath: "out.wav"))
 ```
 
-Voice cloning (returns a voice-only handle; run the Python helper to
-finish the prefill in Phase 4A):
+`loadVoice` auto-detects the bundle flavor:
+
+- **Voice-only** (default for `alba.safetensors`-style files): the
+  orchestrator runs `text_conditioner.mlpackage` +
+  `flow_lm_prefill.mlpackage` on each `generate(text:voice:)` call to
+  bake the text into the KV cache, then runs the AR loop. No Python
+  helper required. The prefill itself is ~10–50 ms; the AR hot loop is
+  identical to the pre-prefilled path.
+
+- **Pre-prefilled** (optional back-compat): the KV cache already
+  contains the text embedding for a specific prompt. Produced offline
+  via `python -m pockettts_coreml.e2e.export_full_prefill`. Useful if
+  an app caches canned (voice, prompt) pairs and wants to avoid
+  per-call prefill entirely. The `text` argument is ignored in this
+  case.
+
+Voice cloning (runs `mimi_encoder.mlpackage` on a reference waveform;
+the second stage that turns the latents into a FlowLM voice KV is still
+offline — the CLI dumps latents that a follow-up step can consume):
 
 ```swift
 let cloned = try await tts.cloneVoice(from: URL(fileURLWithPath: "sample.wav"))
@@ -104,13 +90,13 @@ swift build -c release
 ./.build/release/pocket-tts-cli generate  \
     --artifacts Artifacts/en_alba_fp16    \
     --tokenizer tokenizer.model           \
-    --voice    alba_prefilled.safetensors \
+    --voice    alba.safetensors           \
     --text "Pocket TTS is a lightweight text-to-speech model." \
     --out  out.wav
 ./.build/release/pocket-tts-cli benchmark \
     --artifacts Artifacts/en_alba_fp16    \
     --tokenizer tokenizer.model           \
-    --voice    alba_prefilled.safetensors \
+    --voice    alba.safetensors           \
     --iterations 5
 ./.build/release/pocket-tts-cli clone     \
     --artifacts Artifacts/en_alba_fp16    \
@@ -130,10 +116,12 @@ Covered:
   prompt.
 - `VoiceLoadTests` — voice-only (`alba.safetensors`) + prefilled loader
   + safetensors roundtrip.
-- `EndToEndTests` — canonical prompt generation, PSNR ≥ 15 dB overall
-  and ≥ 25 dB best-early-frame (matches the Python e2e gate).
+- `EndToEndTests` — canonical prompt generation from a pre-prefilled
+  bundle, PSNR ≥ 15 dB overall and ≥ 25 dB best-early-frame.
+- `PrefillIntegrationTest` — canonical prompt generation from the raw
+  voice (in-Swift prefill), PSNR ≥ 15 dB.
 - `BenchmarkTests` — RTF ≤ 0.40 on Mac (currently ~**0.09** with
-  `.cpuAndNeuralEngine`).
+  `.cpuAndNeuralEngine`, same with or without in-Swift prefill).
 
 ## Architecture
 
@@ -144,7 +132,7 @@ Covered:
 | `TextChunker.swift`          | port of `pocket_tts.models.tts_model.split_into_best_sentences` |
 | `VoiceLoader.swift`          | reads voice-only + prefilled `.safetensors` bundles |
 | `VoiceCloner.swift`          | runs `mimi_encoder.mlpackage` on a user waveform |
-| `Orchestrator.swift`         | AR-loop producer; fp16 flow_lm + fp32 mimi_decoder |
+| `Orchestrator.swift`         | in-Swift text prefill + AR loop producer; fp16 flow_lm + fp32 mimi_decoder |
 | `KVCacheBuffers.swift`       | FlowLM rank-5 KV cache constants |
 | `MimiStateBuffer.swift`      | packed fp32 state blob + ping-pong buffers; reads `mimi_decoder.state_layout.json` |
 | `RoPECache.swift`            | cos/sin tables precomputed once per AR direction |
@@ -160,36 +148,35 @@ Covered:
 | Model              | I/O dtype |
 |--------------------|-----------|
 | `text_conditioner` | int32 in, fp16 out |
-| `flow_lm_main`     | fp16 end-to-end |
+| `flow_lm_prefill`  | fp16 end-to-end (128-token prefill graph) |
+| `flow_lm_main`     | fp16 end-to-end (AR step graph) |
 | `flow_lm_flow`     | fp16 end-to-end |
 | `mimi_encoder`     | fp16 end-to-end |
 | `mimi_decoder`     | **fp32** end-to-end (converted at fp32 compute precision; see `docs/phase2_3_notes.md`) |
 
-## Known gaps (intentional for Phase 4A)
+## Known gaps
 
-1. **No in-Swift text prefill.** See limitation above.
-2. **`cloneVoice`** returns latents, not a runnable handle — the prefill
-   step (`flow_lm_main` prefill over the latents) needs Python too.
-3. **No MLComputePlan / ANE residency** inspection. Phase 4B.
-4. **No iOS build.** Platforms list declares iOS 18+ but no
-   `#if os(iOS)` code paths exist yet (there's nothing iOS-specific to
-   gate in 4A). AVAudioSession, background-mode entitlements, etc. come
-   in Phase 4B.
-5. **Tokenizer is not yet plugged into `generate`** at runtime — the
-   pre-prefilled bundle encodes the text choice at export time. The
-   tokenizer is exposed via `PocketTTS.tokenize(_:)` for tests and for
-   Phase 4B's in-Swift prefill.
+1. **`cloneVoice`** runs only the first stage (Mimi encoder); the
+   flow_lm pass over those latents to produce a usable voice KV still
+   requires an offline step. Porting that is a follow-up to this cycle.
+2. **No MLComputePlan / ANE residency** inspection.
+3. **No iOS build.** Platforms list declares iOS 18+ but no
+   `#if os(iOS)` code paths exist yet.
 
 ## Performance (reference numbers)
 
-Measured on an Apple Silicon Mac (`.cpuAndNeuralEngine`, `swift run`
-release), 3-iteration best-of:
+Measured on an Apple Silicon Mac (`.cpuAndNeuralEngine`, `swift run -c
+release`), 3-iteration best-of, 3.6 s of audio per run:
 
-| Stage            | RTF  |
-|------------------|------|
-| Python reference | 0.30 |
-| Swift (this)     | **0.09** |
+| Configuration                              | RTF    |
+|--------------------------------------------|--------|
+| Python reference                           | 0.30   |
+| Swift, pre-prefilled bundle                | 0.087  |
+| Swift, raw voice (in-Swift text prefill)   | 0.087  |
+| Swift, raw voice — first (cold) iteration  | ~0.10  |
 
-The Swift RTF is better than Python's because the Python driver
-re-seeds / re-imports the reference PyTorch each call; the Swift side
-only touches CoreML once per AR step.
+The text prefill (128-token, single forward through the 6-layer
+transformer) adds ~10–20 ms per utterance — negligible compared to the
+~3 s of audio produced. Steady-state per-frame RTF is unchanged vs. the
+pre-prefilled path because the AR loop executes the same
+`flow_lm_main.mlpackage` graph either way.

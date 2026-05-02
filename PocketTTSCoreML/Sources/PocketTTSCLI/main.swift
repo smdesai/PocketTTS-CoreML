@@ -41,14 +41,15 @@ struct PocketTTSCLI {
           tokenize  --tokenizer MODEL --text TEXT
 
         Notes:
-          * `--voice` for `generate` / `benchmark` must be a PRE-PREFILLED
-            safetensors produced by:
-              python -m pockettts_coreml.e2e.export_full_prefill \\
-                  --voice alba.safetensors --prompt "..." \\
-                  --out alba_prefilled.safetensors
-
-            Phase 4A cannot run the flow_lm_main prefill in Swift (see
-            the package README for details).
+          * `--voice` accepts EITHER:
+             - a raw voice safetensors (e.g. alba.safetensors from the
+               kyutai HF repo). The runtime tokenizes, runs
+               text_conditioner + flow_lm_prefill, and streams audio
+               without any Python helper.
+             - a pre-prefilled safetensors produced by
+               `python -m pockettts_coreml.e2e.export_full_prefill`
+               (back-compat path for apps that cache voice+prompt
+               pairs; the `--text` arg is ignored in that case).
           * Defaults: --artifacts=./Artifacts/en_alba_fp16
                       --tokenizer=./tokenizer.model
         """
@@ -133,6 +134,12 @@ struct PocketTTSCLI {
             computeUnits: .cpuAndNeuralEngine
         )
         let voice = try await tts.loadVoice(from: voiceURL)
+        let kind: String
+        switch voice.kind {
+        case .prefilled: kind = "prefilled"
+        case .voiceOnly: kind = "voiceOnly (runs in-Swift text prefill per call)"
+        }
+        fputs("Voice: \(kind)\n", stderr)
         await tts.warmup()
 
         var rtfs: [Double] = []
@@ -147,8 +154,9 @@ struct PocketTTSCLI {
             let audioSec = Double(samples) / Double(PocketTTSArch.sampleRate)
             let rtf = elapsed / max(audioSec, 1e-9)
             rtfs.append(rtf)
-            print(String(format: "iter %d: audio=%.3fs wall=%.3fs RTF=%.3f",
-                         i, audioSec, elapsed, rtf))
+            let label = (i == 0) ? "cold" : " warm"
+            print(String(format: "iter %d (%@): audio=%.3fs wall=%.3fs RTF=%.3f",
+                         i, label as CVarArg, audioSec, elapsed, rtf))
         }
         let best = rtfs.min() ?? 0
         let mean = rtfs.reduce(0, +) / Double(max(rtfs.count, 1))
@@ -168,21 +176,20 @@ struct PocketTTSCLI {
             computeUnits: .cpuAndNeuralEngine
         )
         let handle = try await tts.cloneVoice(from: audioURL)
-        // Voice-only handles cannot go through the standard saveVoice
-        // (Phase 4A). Write a marker file with the latents so Python can
-        // complete the prefill.
         switch handle.kind {
         case .prefilled:
             try await tts.saveVoice(handle, to: outURL)
             print("Wrote \(outURL.path)")
-        case .voiceOnly(let layers, _):
-            // Dump as a mimi_encoder latents bundle.
-            let flat = layers.first?.cache ?? []
-            let data = flat.withUnsafeBufferPointer { Data(buffer: $0) }
+        case .voiceOnly:
+            // cloneVoice only runs mimi_encoder — it does NOT produce the
+            // 6-layer FlowLM voice KV. Pull the Mimi latents off the
+            // cloner and stash them for an offline prefill step.
+            let latents = await tts.lastCloneLatents() ?? []
+            let data = latents.withUnsafeBufferPointer { Data(buffer: $0) }
             try SafetensorsWriter.write([
-                .init(name: "mimi_latents", shape: [flat.count], dtype: .F32, data: data)
+                .init(name: "mimi_latents", shape: [latents.count], dtype: .F32, data: data)
             ], to: outURL)
-            print("Wrote \(outURL.path) (mimi latents; run export_full_prefill.py to finish)")
+            print("Wrote \(outURL.path) (mimi latents; offline prefill still required)")
         }
     }
 

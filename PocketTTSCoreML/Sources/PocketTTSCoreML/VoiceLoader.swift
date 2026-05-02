@@ -3,17 +3,22 @@ import CoreML
 
 /// Handle to a loaded voice (KV cache snapshot).
 ///
-/// Phase 4A supports two handle flavors:
+/// Two handle flavors are supported (auto-detected at load time by
+/// `VoiceLoader.load(url:)`):
 ///
-/// - `.prefilled(kv, offset, bosEmb)` — the KV cache already contains the
-///   text prefill for a specific prompt. Produced by
+/// - `.prefilled(kv, offset, bosEmb, promptUTF8, noiseSeq)` — the KV cache
+///   already contains the text prefill for a specific prompt. Produced by
 ///   `pockettts_coreml.e2e.export_full_prefill`. The orchestrator skips its
-///   prefill step and goes straight to AR generation.
-/// - `.voiceOnly(cache, offset, bosEmb)` — voice-only KV prefix at the
-///   reference layer layout `[2, 1, T_voice, H, D]`. Phase 4A cannot perform
-///   text prefill in Swift (see README §Limitations); using this handle
-///   without an accompanying pre-prefilled bundle will fail at
-///   `PocketTTS.generate(...)`.
+///   prefill step and goes straight to AR generation. Useful as a
+///   voice+prompt cache for apps that ship fixed canned phrases.
+///
+/// - `.voiceOnly(flowKVRank5, voiceOffset, bosEmb)` — the voice KV prefix
+///   pre-packed into the CoreML rank-5 layout, ready to be fed to
+///   `flow_lm_prefill.mlpackage` for in-Swift text prefill. This is the
+///   usual path: ship the raw per-layer voice file (e.g. alba.safetensors
+///   from the kyutai HF repo) and let the runtime handle the rest.
+///   `bosEmb` is optional here — if nil, the orchestrator falls back to
+///   the `flow_lm_bos_emb.safetensors` sidecar it loaded at init.
 public struct VoiceHandle: Sendable {
     public enum Kind: Sendable {
         /// Full voice + text prefill (ready for AR loop).
@@ -27,17 +32,15 @@ public struct VoiceHandle: Sendable {
             /// WILL diverge from the Python oracle's RNG).
             noiseSeq: [[Float]]?
         )
-        /// Voice-only prefill (needs a Phase-4B-supplied text prefill step).
+        /// Voice-only prefill — orchestrator runs text prefill in Swift.
+        /// `flowKVRank5` is fp16 [2*L, 1, S_cap, H, D] with the voice KV at
+        /// slots [0, voiceOffset) and zeros elsewhere. `bosEmb` is optional
+        /// (the orchestrator supplies a default from the sidecar if nil).
         case voiceOnly(
-            layers: [LayerCache],
+            flowKVRank5: MLMultiArrayBox,
+            voiceOffset: Int,
             bosEmb: [Float]?
         )
-    }
-
-    public struct LayerCache: Sendable {
-        public let cache: [Float]  // shape [2, 1, T_voice, H, D] flat
-        public let offset: Int
-        public let tVoice: Int
     }
 
     public let kind: Kind
@@ -127,34 +130,101 @@ public enum VoiceLoader {
     }
 
     static func loadVoiceOnly(reader: SafetensorsReader, sourceURL: URL) throws -> VoiceHandle {
-        // Walk transformer.layers.<i>.self_attn/cache and /offset.
-        var layers: [VoiceHandle.LayerCache] = []
+        // Walk transformer.layers.<i>.self_attn/cache and /offset. Pack
+        // into the rank-5 KV layout expected by flow_lm_prefill:
+        //   [2*L, 1, S_cap, H, D]  (voice slots [0, voice_off) only)
+        let shape: [NSNumber] = [
+            NSNumber(value: 2 * PocketTTSArch.flowLayers),
+            1,
+            NSNumber(value: PocketTTSArch.flowSCap),
+            NSNumber(value: PocketTTSArch.flowHeads),
+            NSNumber(value: PocketTTSArch.flowHeadDim),
+        ]
+        let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        // Zero-fill first.
+        let total = arr.count
+        let dstPtr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+        for i in 0..<total { dstPtr[i] = 0 }
+
+        let rowStride = PocketTTSArch.flowSCap * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        let perSlot = PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+
+        var voiceOffset: Int? = nil
         for layer in 0..<PocketTTSArch.flowLayers {
             let cacheKey = "transformer.layers.\(layer).self_attn/cache"
             let offKey = "transformer.layers.\(layer).self_attn/offset"
             guard reader.tensors[cacheKey] != nil, reader.tensors[offKey] != nil else {
                 throw SafetensorsError.missingKey(cacheKey)
             }
-            let (cache, shape) = try reader.float32Array(for: cacheKey)
+            let (cache, cshape) = try reader.float32Array(for: cacheKey)
             // Shape: [2, 1, T_voice, H, D]
-            guard shape.count == 5, shape[0] == 2, shape[1] == 1,
-                  shape[3] == PocketTTSArch.flowHeads, shape[4] == PocketTTSArch.flowHeadDim
+            guard cshape.count == 5, cshape[0] == 2, cshape[1] == 1,
+                  cshape[3] == PocketTTSArch.flowHeads, cshape[4] == PocketTTSArch.flowHeadDim
             else {
                 throw SafetensorsError.shapeMismatch(
                     expected: [2, 1, -1, PocketTTSArch.flowHeads, PocketTTSArch.flowHeadDim],
-                    actual: shape
+                    actual: cshape
                 )
             }
-            let tVoice = shape[2]
+            let tVoice = cshape[2]
             let (offArr, _) = try reader.int64Array(for: offKey)
             let offset = Int(offArr[0])
-            // NaN-sanitize: reference cache contains NaNs in unwritten slots.
+            if let prior = voiceOffset, prior != offset {
+                throw NSError(domain: "VoiceLoader", code: 4, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "voice KV has inconsistent per-layer offsets: \(prior) vs \(offset)"
+                ])
+            }
+            voiceOffset = offset
+            // NaN-sanitize reference cache (reference fills unwritten slots
+            // with NaN; flow_lm_prefill requires finite inputs everywhere).
             var sanitized = cache
             for i in 0..<sanitized.count where sanitized[i].isNaN { sanitized[i] = 0 }
-            layers.append(VoiceHandle.LayerCache(cache: sanitized, offset: offset, tVoice: tVoice))
+
+            // Copy first `offset` slots into rows 2*layer (K) and 2*layer+1 (V).
+            // Source layout per K or V: [1, T_voice, H, D] → per slot H*D floats.
+            let copyLen = min(offset, tVoice, PocketTTSArch.flowSCap)
+            if copyLen == 0 { continue }
+            // Convert per-slot fp32 → fp16 on the fly.
+            let kBase = 0  // k occupies src[0 * tVoice * H * D ..]
+            let vBase = tVoice * perSlot  // v occupies src[1 * tVoice * H * D ..]
+            let dstKBase = (2 * layer) * rowStride
+            let dstVBase = (2 * layer + 1) * rowStride
+            sanitized.withUnsafeBufferPointer { sp in
+                var buf = [Float](repeating: 0, count: perSlot)
+                for s in 0..<copyLen {
+                    // K slot s
+                    let srcK = sp.baseAddress!.advanced(by: kBase + s * perSlot)
+                    for i in 0..<perSlot { buf[i] = srcK[i] }
+                    buf.withUnsafeBufferPointer { bp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: bp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstKBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                    // V slot s
+                    let srcV = sp.baseAddress!.advanced(by: vBase + s * perSlot)
+                    for i in 0..<perSlot { buf[i] = srcV[i] }
+                    buf.withUnsafeBufferPointer { bp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: bp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstVBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                }
+            }
+        }
+        guard let voff = voiceOffset else {
+            throw SafetensorsError.missingKey("transformer.layers.0.self_attn/offset")
         }
         return VoiceHandle(
-            kind: .voiceOnly(layers: layers, bosEmb: nil),
+            kind: .voiceOnly(
+                flowKVRank5: MLMultiArrayBox(arr),
+                voiceOffset: voff,
+                bosEmb: nil
+            ),
             sourceURL: sourceURL
         )
     }
