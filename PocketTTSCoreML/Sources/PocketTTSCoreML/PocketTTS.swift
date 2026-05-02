@@ -1,6 +1,15 @@
 import Foundation
 import CoreML
 
+public enum PocketTTSLoadError: Error, CustomStringConvertible {
+    case modelNotFound(String)
+    public var description: String {
+        switch self {
+        case .modelNotFound(let msg): return "PocketTTSLoadError.modelNotFound: \(msg)"
+        }
+    }
+}
+
 /// Public entry point. Loads the 5 `.mlpackage` bundles + tokenizer + Mimi
 /// state layout, and exposes `generate`/`loadVoice`/`cloneVoice`.
 ///
@@ -43,18 +52,17 @@ public actor PocketTTS {
         let cfg = MLModelConfiguration()
         cfg.computeUnits = computeUnits
 
-        let flowMain = try await Self.loadCompiled(
-            artifactsBundle.appendingPathComponent("flow_lm_main.mlpackage"),
-            config: cfg
-        )
-        let flowFlow = try await Self.loadCompiled(
-            artifactsBundle.appendingPathComponent("flow_lm_flow.mlpackage"),
-            config: cfg
-        )
-        let mimiDec = try await Self.loadCompiled(
-            artifactsBundle.appendingPathComponent("mimi_decoder.mlpackage"),
-            config: cfg
-        )
+        guard let flowMainURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_main"),
+              let flowFlowURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_flow"),
+              let mimiDecURL  = Self.resolveArtifact(artifactsBundle, stem: "mimi_decoder")
+        else {
+            throw PocketTTSLoadError.modelNotFound(
+                "Required mlpackage/mlmodelc not present in: \(artifactsBundle.path)"
+            )
+        }
+        let flowMain = try await Self.loadCompiled(flowMainURL, config: cfg)
+        let flowFlow = try await Self.loadCompiled(flowFlowURL, config: cfg)
+        let mimiDec  = try await Self.loadCompiled(mimiDecURL,  config: cfg)
 
         let layoutURL = artifactsBundle.appendingPathComponent("mimi_decoder.state_layout.json")
         let layout = try MimiStateLayout.load(from: layoutURL)
@@ -66,13 +74,18 @@ public actor PocketTTS {
         var textCond: MLModel? = nil
         var defaultBos: [Float]? = nil
 
-        let prefillURL = artifactsBundle.appendingPathComponent("flow_lm_prefill.mlpackage")
-        if FileManager.default.fileExists(atPath: prefillURL.path) {
-            flowPrefill = try await Self.loadCompiled(prefillURL, config: cfg)
+        // Accept either a `.mlpackage` (compiled at runtime) or a
+        // pre-compiled `.mlmodelc` sibling in the bundle. iOS bundles are
+        // read-only so runtime compilation can't be cached — pre-compile
+        // on macOS via `xcrun coremlcompiler compile` and ship the
+        // `.mlmodelc` directory directly.
+        let prefillURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_prefill")
+        if let url = prefillURL {
+            flowPrefill = try await Self.loadCompiled(url, config: cfg)
         }
-        let tcURL = artifactsBundle.appendingPathComponent("text_conditioner.mlpackage")
-        if FileManager.default.fileExists(atPath: tcURL.path) {
-            textCond = try await Self.loadCompiled(tcURL, config: cfg)
+        let tcURL = Self.resolveArtifact(artifactsBundle, stem: "text_conditioner")
+        if let url = tcURL {
+            textCond = try await Self.loadCompiled(url, config: cfg)
         }
         let bosURL = artifactsBundle.appendingPathComponent("flow_lm_bos_emb.safetensors")
         if FileManager.default.fileExists(atPath: bosURL.path) {
@@ -114,6 +127,18 @@ public actor PocketTTS {
             // Fall back to loading the tmp-located compile result.
             return try MLModel(contentsOf: compiled, configuration: config)
         }
+    }
+
+    /// Resolve a model artifact by stem (e.g. `"flow_lm_main"`). Prefers a
+    /// pre-compiled `.mlmodelc` in the bundle; falls back to `.mlpackage`
+    /// for dev builds. Returns nil if neither exists.
+    private static func resolveArtifact(_ bundle: URL, stem: String) -> URL? {
+        let fm = FileManager.default
+        let mlmodelc = bundle.appendingPathComponent("\(stem).mlmodelc")
+        if fm.fileExists(atPath: mlmodelc.path) { return mlmodelc }
+        let mlpackage = bundle.appendingPathComponent("\(stem).mlpackage")
+        if fm.fileExists(atPath: mlpackage.path) { return mlpackage }
+        return nil
     }
 
     // MARK: - API surface
