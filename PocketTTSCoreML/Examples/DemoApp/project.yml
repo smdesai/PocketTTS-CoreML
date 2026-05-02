@@ -1,0 +1,69 @@
+name: DemoApp
+options:
+  bundleIdPrefix: com.sdesai.pockettts.demo
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Automatic code signing — the user picks their team in Xcode. No team
+    # id is hard-coded so this project stays machine-independent.
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages:
+  PocketTTSCoreML:
+    # Consume the SwiftPM package two levels up.
+    path: ../..
+
+targets:
+  DemoApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: DemoApp
+        excludes:
+          - "Resources"          # included below explicitly
+          - "Info.plist"         # declared via info.path
+      # Folder references preserve the .mlmodelc / Voices directory layouts
+      # exactly as copied by prepare_resources.sh.
+      - path: DemoApp/Resources/Artifacts
+        type: folder
+        buildPhase: resources
+      - path: DemoApp/Resources/Voices
+        type: folder
+        buildPhase: resources
+      - path: DemoApp/Resources/tokenizer.model
+        buildPhase: resources
+    dependencies:
+      - package: PocketTTSCoreML
+        product: PocketTTSCoreML
+    info:
+      path: DemoApp/Info.plist
+      properties:
+        CFBundleDisplayName: PocketTTS Demo
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIBackgroundModes:
+          - audio
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIViewControllerBasedStatusBarAppearance: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.demo.DemoApp
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: "YES"
+        SWIFT_VERSION: "6.0"
