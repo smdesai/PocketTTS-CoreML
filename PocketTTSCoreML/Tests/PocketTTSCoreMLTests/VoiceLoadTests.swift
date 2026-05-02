@@ -7,19 +7,29 @@ final class VoiceLoadTests: XCTestCase {
         try XCTSkipUnless(FixturePaths.voiceAvailable,
                           "alba.safetensors not available at \(FixturePaths.voiceURL.path)")
         let handle = try VoiceLoader.load(url: FixturePaths.voiceURL)
-        guard case let .voiceOnly(layers, _) = handle.kind else {
+        guard case let .voiceOnly(kvBox, voiceOffset, _) = handle.kind else {
             XCTFail("Expected voice-only handle"); return
         }
-        XCTAssertEqual(layers.count, PocketTTSArch.flowLayers, "expected 6 FlowLM layers")
-        for (i, layer) in layers.enumerated() {
-            XCTAssertEqual(layer.offset, 126, "layer \(i) offset should match voice prefix length")
-            XCTAssertEqual(layer.tVoice, 126, "layer \(i) T_voice should be 126 slots")
-            let expectedFloats = 2 * 1 * 126 * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
-            XCTAssertEqual(layer.cache.count, expectedFloats,
-                           "layer \(i) flat cache size mismatch")
-            // Sanity: at least some non-zero values.
-            XCTAssertTrue(layer.cache.contains(where: { $0 != 0 && !$0.isNaN }),
-                          "layer \(i) cache is all-zero — voice prefix probably dropped")
+        // Rank-5 [12, 1, 256, 16, 64] fp16, packed from the 6 per-layer caches.
+        let expected = (2 * PocketTTSArch.flowLayers) * 1 * PocketTTSArch.flowSCap
+            * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        XCTAssertEqual(kvBox.array.count, expected, "rank-5 KV size mismatch")
+        XCTAssertEqual(voiceOffset, 126,
+                       "alba voice prefix length should be 126 after 4s audio @ 12.5 Hz")
+        XCTAssertEqual(kvBox.array.dataType, .float16)
+        // Sanity: voice slots [0, 126) carry signal; slots [126, 256) are zero.
+        // Check by sampling layer 0's K row 0 and comparing to row 200.
+        let ptr = kvBox.array.dataPointer.bindMemory(to: UInt16.self, capacity: kvBox.array.count)
+        let rowStride = PocketTTSArch.flowSCap * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        let perSlot = PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        // Layer 0 K = row 0 of rank-5.
+        let slot0K = ptr.advanced(by: 0 * rowStride + 0 * perSlot)
+        let slot200K = ptr.advanced(by: 0 * rowStride + 200 * perSlot)
+        var any0 = false
+        for i in 0..<perSlot where slot0K[i] != 0 { any0 = true; break }
+        XCTAssertTrue(any0, "layer 0 K slot 0 should be non-zero (voice KV)")
+        for i in 0..<perSlot {
+            XCTAssertEqual(slot200K[i], 0, "slot 200 (past voice_len=126) must be zero")
         }
     }
 

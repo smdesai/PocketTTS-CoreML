@@ -4,23 +4,49 @@ import Accelerate
 
 /// Drives the CoreML AR loop for a single utterance.
 ///
-/// This mirrors the control flow in `pockettts_coreml.e2e.generator`'s
-/// `CoreMLGenerator.generate`, but expects the caller to provide a
-/// `VoiceHandle(.prefilled)` — i.e. voice+text prefill already baked in.
+/// Accepts either flavor of `VoiceHandle`:
 ///
-/// Why no in-Swift prefill? The currently-shipped `flow_lm_main.mlpackage`
-/// takes only an AR step signature (`sequence=[1,1,32]`, no
-/// `text_embeddings` input). Running step-by-step prefill through it is
-/// not possible because the traced graph does not concat text embeddings
-/// along the time axis. Until a dedicated prefill `.mlpackage` is added
-/// (or a Swift port of the 6-layer transformer is written), the prefill
-/// runs in Python — see `tools/export_full_prefill.py`.
+/// - `.prefilled`: voice + text prefill already baked into the KV cache
+///   (produced by the legacy `export_full_prefill.py`). Orchestrator goes
+///   straight to the AR loop.
+/// - `.voiceOnly`: voice-only KV prefix. Orchestrator runs
+///   `text_conditioner.mlpackage` + `flow_lm_prefill.mlpackage` to bake
+///   in the text prefill, then runs the AR loop. This is the normal path
+///   — no Python helper required.
+///
+/// Models are optional to preserve compatibility with callers that only
+/// hold AR-path artifacts (older bundles without `flow_lm_prefill.mlpackage`
+/// or `text_conditioner.mlpackage`). In that case only `.prefilled`
+/// handles work and `.voiceOnly` throws `prefillRequired`.
 public final class Orchestrator: @unchecked Sendable {
     public struct Models {
         public let flowMain: MLModel
         public let flowFlow: MLModel
         public let mimiDecoder: MLModel
         public let mimiLayout: MimiStateLayout
+        /// Optional — required only for in-Swift text prefill.
+        public let flowPrefill: MLModel?
+        /// Optional — required only for in-Swift text prefill.
+        public let textConditioner: MLModel?
+        /// Optional — used as a fallback when the `.voiceOnly` handle
+        /// didn't carry its own bos_emb (read from
+        /// `Artifacts/.../flow_lm_bos_emb.safetensors`).
+        public let defaultBosEmb: [Float]?
+
+        public init(
+            flowMain: MLModel, flowFlow: MLModel, mimiDecoder: MLModel,
+            mimiLayout: MimiStateLayout,
+            flowPrefill: MLModel? = nil, textConditioner: MLModel? = nil,
+            defaultBosEmb: [Float]? = nil
+        ) {
+            self.flowMain = flowMain
+            self.flowFlow = flowFlow
+            self.mimiDecoder = mimiDecoder
+            self.mimiLayout = mimiLayout
+            self.flowPrefill = flowPrefill
+            self.textConditioner = textConditioner
+            self.defaultBosEmb = defaultBosEmb
+        }
     }
 
     public let models: Models
@@ -45,13 +71,19 @@ public final class Orchestrator: @unchecked Sendable {
         public let eosLogit: Float
     }
 
-    /// Run the AR loop for one prefilled voice and stream audio frames.
+    /// Run the AR loop for one voice and stream audio frames.
+    ///
+    /// - Parameter textTokens: int32 token ids for the prompt. Required
+    ///   when `voice` is `.voiceOnly` (the orchestrator does the text
+    ///   prefill in Swift). Ignored for `.prefilled` voices (text was
+    ///   baked into the KV cache at export time).
     ///
     /// The returned async stream yields PCM16 little-endian frames of 1920
     /// samples each. Terminates either when max_gen_len is exhausted or
     /// `framesAfterEos` frames past the first EOS trigger.
     public func generate(
         voice: VoiceHandle,
+        textTokens: [Int32] = [],
         options: PocketTTS.GenerateOptions,
         maxGenLen: Int = 512
     ) -> AsyncThrowingStream<Data, Error> {
@@ -59,7 +91,8 @@ public final class Orchestrator: @unchecked Sendable {
         let task = Task { [self] in
             do {
                 try self.runLoop(
-                    voice: voice, options: options,
+                    voice: voice, textTokens: textTokens,
+                    options: options,
                     maxGenLen: maxGenLen, continuation: continuation
                 )
                 continuation.finish()
@@ -73,12 +106,39 @@ public final class Orchestrator: @unchecked Sendable {
 
     private func runLoop(
         voice: VoiceHandle,
+        textTokens: [Int32],
         options: PocketTTS.GenerateOptions,
         maxGenLen: Int,
         continuation: AsyncThrowingStream<Data, Error>.Continuation
     ) throws {
-        guard case let .prefilled(kvBox, initialOffset, bosEmb, _, noiseSeq) = voice.kind else {
-            throw OrchestratorError.prefillRequired
+        // Resolve to the AR-loop inputs: (kvCache, initialOffset, bosEmb, noiseSeq).
+        let kvBox: MLMultiArrayBox
+        let initialOffset: Int
+        let bosEmb: [Float]
+        let noiseSeq: [[Float]]?
+        switch voice.kind {
+        case let .prefilled(b, off, bos, _, ns):
+            kvBox = b
+            initialOffset = off
+            bosEmb = bos
+            noiseSeq = ns
+        case let .voiceOnly(b, voiceOff, bos):
+            guard textTokens.count > 0 else {
+                throw OrchestratorError.emptyTextForVoiceOnly
+            }
+            let emb = bos ?? models.defaultBosEmb
+            guard let resolvedBos = emb else {
+                throw OrchestratorError.missingBosEmb
+            }
+            let newOffset = try runTextPrefill(
+                voiceKV: b.array,
+                voiceOffset: voiceOff,
+                textTokens: textTokens
+            )
+            kvBox = b
+            initialOffset = newOffset
+            bosEmb = resolvedBos
+            noiseSeq = nil  // no golden RNG trajectory for dynamic prompts
         }
 
         // Preallocate persistent buffers. flow_lm_* are fp16 end-to-end.
@@ -263,6 +323,144 @@ public final class Orchestrator: @unchecked Sendable {
         }
     }
 
+    // ------------------------------------------------------------
+    // Text prefill (Swift-native path)
+    // ------------------------------------------------------------
+
+    /// Run text_conditioner + flow_lm_prefill to update `voiceKV` in-place
+    /// with the text KV at slots [voiceOffset, voiceOffset + S_text).
+    /// Returns the new absolute offset (= voiceOffset + S_text).
+    ///
+    /// Inputs/outputs are fp16 end-to-end. The text_conditioner output is
+    /// padded to S_TEXT_PAD=128 (the static input width baked into that
+    /// .mlpackage). `scatter_mask` zeros out any column beyond S_text so
+    /// the padded tokens don't touch the KV cache.
+    public func runTextPrefill(
+        voiceKV: MLMultiArray,
+        voiceOffset: Int,
+        textTokens: [Int32]
+    ) throws -> Int {
+        guard let prefill = models.flowPrefill else {
+            throw OrchestratorError.prefillModelMissing
+        }
+        guard let textCond = models.textConditioner else {
+            throw OrchestratorError.textConditionerMissing
+        }
+
+        let sTextPad = PocketTTSArch.sTextPad
+        let sText = textTokens.count
+        guard sText > 0 && sText <= sTextPad else {
+            throw OrchestratorError.textTooLong(sText, max: sTextPad)
+        }
+        guard voiceOffset + sText <= PocketTTSArch.flowSCap else {
+            throw OrchestratorError.prefillOverflow(
+                voiceOffset: voiceOffset, sText: sText,
+                sCap: PocketTTSArch.flowSCap
+            )
+        }
+
+        // 1. text_conditioner: int32[1, 128] → fp16[1, 128, 1024].
+        let tokensIn = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad)], dataType: .int32
+        )
+        tokensIn.withUnsafeMutableBufferPointer(ofType: Int32.self) { buf, _ in
+            for i in 0..<sTextPad {
+                buf[i] = i < sText ? textTokens[i] : 0
+            }
+        }
+        let tcProvider = try MLDictionaryFeatureProvider(dictionary: [
+            "tokens": MLFeatureValue(multiArray: tokensIn)
+        ])
+        let tcOut = try prefill_predict_autorelease(model: textCond, provider: tcProvider)
+        guard let embsMA = tcOut.featureValue(for: "embeddings")?.multiArrayValue else {
+            throw OrchestratorError.missingOutput("text_conditioner")
+        }
+        // embsMA is fp16[1, 128, 1024].
+
+        // 2. Build prefill inputs. scatter_mask covers only the real S_text
+        //    columns; attn_mask rows 0..<S_text are causal, rows S_text..<128
+        //    copy the last real row for softmax stability.
+        let scatter = try Masks.scatterPrefillMaskFp16Padded(
+            startOffset: voiceOffset, sText: sText, sTextPad: sTextPad,
+            sCapacity: PocketTTSArch.flowSCap
+        )
+        let attn = try Masks.additiveAttentionMaskPrefillFp16Padded(
+            startOffset: voiceOffset, sText: sText, sTextPad: sTextPad,
+            sCapacity: PocketTTSArch.flowSCap
+        )
+        // RoPE table sliced at [voiceOffset, voiceOffset + 128), fp16.
+        let rcFp32 = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float32
+        )
+        let rsFp32 = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float32
+        )
+        flowRope.fillRange(
+            offset: voiceOffset, length: sTextPad,
+            cosOut: rcFp32, sinOut: rsFp32
+        )
+        let rc = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float16
+        )
+        let rs = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float16
+        )
+        let ropeCount = sTextPad * PocketTTSArch.flowHalfDim
+        Float16Ops.convertFp32ToFp16(
+            srcPtr: rcFp32.dataPointer.bindMemory(to: Float.self, capacity: ropeCount),
+            dstPtr: rc.dataPointer.bindMemory(to: UInt16.self, capacity: ropeCount),
+            count: ropeCount
+        )
+        Float16Ops.convertFp32ToFp16(
+            srcPtr: rsFp32.dataPointer.bindMemory(to: Float.self, capacity: ropeCount),
+            dstPtr: rs.dataPointer.bindMemory(to: UInt16.self, capacity: ropeCount),
+            count: ropeCount
+        )
+
+        // 3. Run flow_lm_prefill.
+        let prefillFeatures: [String: MLFeatureValue] = [
+            "text_embeddings": MLFeatureValue(multiArray: embsMA),
+            "kv_cache_in":     MLFeatureValue(multiArray: voiceKV),
+            "scatter_mask":    MLFeatureValue(multiArray: scatter),
+            "attn_mask":       MLFeatureValue(multiArray: attn),
+            "rope_cos":        MLFeatureValue(multiArray: rc),
+            "rope_sin":        MLFeatureValue(multiArray: rs),
+        ]
+        let provider = try MLDictionaryFeatureProvider(dictionary: prefillFeatures)
+        let out = try prefill_predict_autorelease(model: prefill, provider: provider)
+        guard let kvOut = out.featureValue(for: "kv_cache_out")?.multiArrayValue else {
+            throw OrchestratorError.missingOutput("flow_lm_prefill")
+        }
+        // 4. Copy the updated KV back into the caller-owned buffer (both fp16).
+        precondition(kvOut.count == voiceKV.count)
+        memcpy(voiceKV.dataPointer, kvOut.dataPointer,
+               voiceKV.count * MemoryLayout<UInt16>.stride)
+
+        return voiceOffset + sText
+    }
+
+    @inline(__always)
+    private func prefill_predict_autorelease(
+        model: MLModel, provider: MLFeatureProvider
+    ) throws -> MLFeatureProvider {
+        var result: MLFeatureProvider!
+        var caught: Error?
+        autoreleasepool {
+            do { result = try model.prediction(from: provider) }
+            catch { caught = error }
+        }
+        if let e = caught { throw e }
+        return result
+    }
+
     @inline(__always)
     private func copyMLMultiArray(src: MLMultiArray, dst: MLMultiArray) {
         precondition(src.count == dst.count)
@@ -327,13 +525,31 @@ public final class Orchestrator: @unchecked Sendable {
 public enum OrchestratorError: Error, CustomStringConvertible {
     case prefillRequired
     case missingOutput(String)
+    case prefillModelMissing
+    case textConditionerMissing
+    case emptyTextForVoiceOnly
+    case missingBosEmb
+    case textTooLong(Int, max: Int)
+    case prefillOverflow(voiceOffset: Int, sText: Int, sCap: Int)
 
     public var description: String {
         switch self {
         case .prefillRequired:
-            return "Orchestrator needs a pre-prefilled VoiceHandle (Phase 4A: use tools/export_full_prefill.py)"
+            return "Orchestrator needs a pre-prefilled VoiceHandle (load via VoiceLoader)"
         case .missingOutput(let s):
             return "CoreML model \(s) did not return expected output"
+        case .prefillModelMissing:
+            return "flow_lm_prefill.mlpackage not loaded; cannot run in-Swift text prefill"
+        case .textConditionerMissing:
+            return "text_conditioner.mlpackage not loaded; cannot run in-Swift text prefill"
+        case .emptyTextForVoiceOnly:
+            return "Voice-only handle requires text tokens (generate(text:voice:) with non-empty text)"
+        case .missingBosEmb:
+            return "bos_emb missing: no voice-provided value and no default sidecar loaded"
+        case .textTooLong(let n, let m):
+            return "text length \(n) exceeds S_TEXT_PAD=\(m); chunk the text first"
+        case .prefillOverflow(let v, let s, let c):
+            return "voice_offset(\(v)) + s_text(\(s)) > s_cap(\(c)); voice too long for cache"
         }
     }
 }

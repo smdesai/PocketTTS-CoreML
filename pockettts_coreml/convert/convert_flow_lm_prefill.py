@@ -173,11 +173,30 @@ def _build_example_inputs(
     return text_embeddings, kv_cache, scatter_mask, attn_mask, rope_cos, rope_sin
 
 
+def _export_bos_sidecar(bos_emb: torch.Tensor, out_path: Path) -> None:
+    """Write `bos_emb` as a small safetensors file next to the .mlpackage.
+
+    The Swift runtime needs this to seed step-0 of the AR loop — without
+    it, the runtime couldn't generate from a plain voice file (the
+    value is a learned scalar that lives in the FlowLM main weights).
+    """
+    from safetensors.torch import save_file
+    bos = bos_emb.detach().clone().view(-1).contiguous().float()
+    save_file({"bos_emb": bos}, str(out_path),
+              metadata={"phase": "4B-prefill", "ldim": str(int(bos.numel()))})
+    LOGGER.info("flow_lm_prefill: wrote bos_emb sidecar to %s (len=%d)",
+                out_path, int(bos.numel()))
+
+
 def convert(save_path: Path) -> None:
     ps = build_patched_submodules()
     main = ps.flow_lm_main
     wrap = _FlowLMMainPrefillWrap(main)
     wrap.eval()
+    # Sidecar: bos_emb needed by Swift to seed the AR loop step-0.
+    _export_bos_sidecar(
+        main.bos_emb, save_path.parent / "flow_lm_bos_emb.safetensors",
+    )
 
     L = ps.num_layers
     H = ps.num_heads

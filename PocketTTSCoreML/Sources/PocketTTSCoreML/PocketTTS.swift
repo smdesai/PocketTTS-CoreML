@@ -59,9 +59,33 @@ public actor PocketTTS {
         let layoutURL = artifactsBundle.appendingPathComponent("mimi_decoder.state_layout.json")
         let layout = try MimiStateLayout.load(from: layoutURL)
 
+        // Optional models enabling in-Swift text prefill (Phase 4B). If
+        // either is missing, only `.prefilled` VoiceHandle loads remain
+        // functional — `.voiceOnly` loads will throw at generate time.
+        var flowPrefill: MLModel? = nil
+        var textCond: MLModel? = nil
+        var defaultBos: [Float]? = nil
+
+        let prefillURL = artifactsBundle.appendingPathComponent("flow_lm_prefill.mlpackage")
+        if FileManager.default.fileExists(atPath: prefillURL.path) {
+            flowPrefill = try await Self.loadCompiled(prefillURL, config: cfg)
+        }
+        let tcURL = artifactsBundle.appendingPathComponent("text_conditioner.mlpackage")
+        if FileManager.default.fileExists(atPath: tcURL.path) {
+            textCond = try await Self.loadCompiled(tcURL, config: cfg)
+        }
+        let bosURL = artifactsBundle.appendingPathComponent("flow_lm_bos_emb.safetensors")
+        if FileManager.default.fileExists(atPath: bosURL.path) {
+            let reader = try SafetensorsReader(url: bosURL)
+            let (bos, _) = try reader.float32Array(for: "bos_emb")
+            defaultBos = bos
+        }
+
         self.orchestrator = Orchestrator(models: .init(
             flowMain: flowMain, flowFlow: flowFlow,
-            mimiDecoder: mimiDec, mimiLayout: layout
+            mimiDecoder: mimiDec, mimiLayout: layout,
+            flowPrefill: flowPrefill, textConditioner: textCond,
+            defaultBosEmb: defaultBos
         ))
     }
 
@@ -102,17 +126,26 @@ public actor PocketTTS {
         try VoiceLoader.save(handle, to: url)
     }
 
-    /// Phase 4A: cloning returns a voice-only handle. The caller must still
-    /// run the Python prefill helper to produce a prefilled bundle before
-    /// invoking `generate`. This will be closed out in Phase 4B when the
-    /// prefill is ported to Swift.
+    /// Cloning runs `mimi_encoder.mlpackage` on the supplied waveform to
+    /// produce per-voice Mimi latents. The remaining step (flow_lm pass
+    /// over those latents to produce the voice KV cache) is not yet
+    /// implemented in Swift — the CLI stashes the latents to disk for an
+    /// offline prefill. Once that second stage is ported, this method
+    /// will return a `.voiceOnly` handle that can be fed directly to
+    /// `generate(...)`.
+    private var _lastCloner: VoiceCloner?
+
     public func cloneVoice(from audioURL: URL) async throws -> VoiceHandle {
         let cloner = try await VoiceCloner(
             mimiEncoderURL: artifactsBundle.appendingPathComponent("mimi_encoder.mlpackage"),
             computeUnits: computeUnits
         )
-        return try await cloner.clone(from: audioURL)
+        let handle = try await cloner.clone(from: audioURL)
+        self._lastCloner = cloner
+        return handle
     }
+
+    public func lastCloneLatents() -> [Float]? { _lastCloner?.lastLatents }
 
     /// Encode text to SentencePiece ids (exposed for tests / parity checks).
     public nonisolated func tokenize(_ text: String) -> [Int32] {
@@ -121,14 +154,25 @@ public actor PocketTTS {
 
     /// Generate audio for `text`, streaming PCM16 LE 24 kHz mono.
     ///
-    /// - Note: the `voice` must be a `.prefilled` handle matching the
-    ///   `text`. Phase 4A does not do text prefill in Swift — see README.
+    /// Behavior depends on the voice handle flavor:
+    /// - `.voiceOnly`: text is tokenized and a Swift-native prefill step
+    ///   (text_conditioner + flow_lm_prefill) runs before the AR loop.
+    /// - `.prefilled`: the `text` argument is ignored (text prefill was
+    ///   baked into the KV cache by `export_full_prefill.py`).
     public func generate(
         text: String,
         voice: VoiceHandle,
         options: GenerateOptions = .default
     ) -> AsyncThrowingStream<Data, Error> {
-        orchestrator.generate(voice: voice, options: options, maxGenLen: options.maxGenLen)
+        let tokens: [Int32]
+        switch voice.kind {
+        case .voiceOnly: tokens = tokenizer.encode(text)
+        case .prefilled: tokens = []  // ignored for pre-prefilled bundles
+        }
+        return orchestrator.generate(
+            voice: voice, textTokens: tokens,
+            options: options, maxGenLen: options.maxGenLen
+        )
     }
 
     public func warmup() async {
