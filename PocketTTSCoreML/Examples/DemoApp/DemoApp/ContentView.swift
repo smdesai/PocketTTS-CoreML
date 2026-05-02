@@ -240,8 +240,11 @@ struct ContentView: View {
         if let audio = viewModel.stats.audioSeconds {
             parts.append(String(format: "Audio: %.2fs", audio))
         }
-        if let rtf = viewModel.stats.rtf {
-            parts.append(String(format: "RTF %.2fx", rtf))
+        if let rtf = viewModel.stats.rtf, rtf > 0 {
+            // User-facing metric: RTFx = audio / wall (how many times
+            // faster than realtime). Internal stats.rtf is wall / audio,
+            // so invert for display.
+            parts.append(String(format: "RTFx %.2fx", 1.0 / rtf))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
