@@ -56,6 +56,26 @@ from pockettts_coreml.patches.rope_patched import apply_rope
 ATTN_MASK_NEG = -6.5504e4
 
 
+def _softmax_maybe_fp32(scores: torch.Tensor, use_fp32: bool) -> torch.Tensor:
+    """Apply softmax, optionally casting to fp32 for the reduction.
+
+    When `use_fp32=True` and the CoreML graph is converted at fp16 compute
+    precision, the trace produces an explicit `cast_fp16 -> cast_fp32 ->
+    softmax -> cast_fp16` MIL pattern. CoreML's compiler keeps the softmax
+    op on the fp32 register bank, preserving exponent headroom over a
+    mostly-masked additive attention (255/256 positions at -65500). This
+    eliminates the AR amplitude-drift documented in
+    `docs/investigations/fp16_drift_localization.md`.
+
+    In eager (PyTorch) mode, the cast-up/cast-down is a no-op for fp32
+    tensors and an inexpensive round-trip for fp16 tensors. Parity at
+    atol=1e-5 fp32 is unaffected.
+    """
+    if use_fp32:
+        return torch.softmax(scores.float(), dim=-1).to(scores.dtype)
+    return F.softmax(scores, dim=-1)
+
+
 class PatchedStreamingMultiheadAttention(nn.Module):
     """Streaming MHA with pure-functional KV I/O.
 
@@ -84,12 +104,19 @@ class PatchedStreamingMultiheadAttention(nn.Module):
     `[B, T, 3, H, D]`).
     """
 
-    def __init__(self, embed_dim: int, num_heads: int):
+    def __init__(self, embed_dim: int, num_heads: int, use_fp32_softmax: bool = True):
         super().__init__()
         assert embed_dim % num_heads == 0
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dim_per_head = embed_dim // num_heads
+        # Selective fp32 softmax: when True (default), the trace emits an
+        # explicit cast-up / softmax / cast-down around the attention
+        # reduction so CoreML keeps the softmax at fp32 compute precision
+        # while weights stay fp16. Recovers the AR drift win documented in
+        # `docs/investigations/fp16_drift_localization.md` at near-zero
+        # ship cost. Set False only to reproduce the old all-fp16 bundle.
+        self.use_fp32_softmax = use_fp32_softmax
 
         # Reference packs Q, K, V into a single linear projection of size
         # 3 * embed_dim. The reshape order is [B, T, 3, H, D] with
@@ -167,7 +194,7 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         scale = 1.0 / math.sqrt(D)
         scores = torch.matmul(q_attn, k_attn.transpose(-2, -1)) * scale
         scores = scores + attn_mask
-        probs = F.softmax(scores, dim=-1)
+        probs = _softmax_maybe_fp32(scores, self.use_fp32_softmax)
         x_attn = torch.matmul(probs, v_attn)
         # [B, H, T, D] -> [B, T, H, D] -> [B, T, H*D].  `flatten(-2)`
         # merges the last two axes without reading shape as Python ints.
@@ -242,7 +269,7 @@ class PatchedStreamingMultiheadAttention(nn.Module):
         scale = 1.0 / math.sqrt(D)
         scores = torch.matmul(q_attn, k_attn.transpose(-2, -1)) * scale
         scores = scores + attn_mask
-        probs = F.softmax(scores, dim=-1)
+        probs = _softmax_maybe_fp32(scores, self.use_fp32_softmax)
         x_attn = torch.matmul(probs, v_attn)
         x_out = x_attn.permute(0, 2, 1, 3).flatten(-2)
         x_out = self.out_proj(x_out)
@@ -266,10 +293,12 @@ class PatchedStreamingTransformerLayer(nn.Module):
         num_heads: int,
         dim_feedforward: int,
         layer_scale: float | None = None,
+        use_fp32_softmax: bool = True,
     ):
         super().__init__()
         self.self_attn = PatchedStreamingMultiheadAttention(
-            embed_dim=d_model, num_heads=num_heads
+            embed_dim=d_model, num_heads=num_heads,
+            use_fp32_softmax=use_fp32_softmax,
         )
         self.norm1 = nn.LayerNorm(d_model, eps=1e-5)
         self.norm2 = nn.LayerNorm(d_model, eps=1e-5)
@@ -372,12 +401,14 @@ class PatchedStreamingTransformer(nn.Module):
         num_layers: int,
         dim_feedforward: int,
         layer_scale: float | None = None,
+        use_fp32_softmax: bool = True,
     ):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
         self.num_layers = num_layers
         self.head_dim = d_model // num_heads
+        self.use_fp32_softmax = use_fp32_softmax
         self.layers = nn.ModuleList(
             [
                 PatchedStreamingTransformerLayer(
@@ -385,6 +416,7 @@ class PatchedStreamingTransformer(nn.Module):
                     num_heads=num_heads,
                     dim_feedforward=dim_feedforward,
                     layer_scale=layer_scale,
+                    use_fp32_softmax=use_fp32_softmax,
                 )
                 for _ in range(num_layers)
             ]

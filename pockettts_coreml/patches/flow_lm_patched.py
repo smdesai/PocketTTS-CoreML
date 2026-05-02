@@ -95,6 +95,7 @@ class PatchedFlowLMMain(nn.Module):
         num_layers: int,
         dim_feedforward: int,
         dtype: torch.dtype = torch.float32,
+        use_fp32_softmax: bool = True,
     ):
         super().__init__()
         self.ldim = ldim
@@ -107,6 +108,7 @@ class PatchedFlowLMMain(nn.Module):
             num_layers=num_layers,
             dim_feedforward=dim_feedforward,
             layer_scale=None,  # FlowLM transformer has no layer_scale.
+            use_fp32_softmax=use_fp32_softmax,
         )
         self.out_norm = nn.LayerNorm(d_model, eps=1e-5)
         self.out_eos = nn.Linear(d_model, 1, dtype=dtype)

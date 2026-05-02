@@ -189,7 +189,15 @@ def _export_bos_sidecar(bos_emb: torch.Tensor, out_path: Path) -> None:
 
 
 def convert(save_path: Path) -> None:
-    ps = build_patched_submodules()
+    # Selective fp32 softmax: default ON. See convert_flow_lm_main.py for
+    # rationale and `docs/investigations/fp16_drift_localization.md` for
+    # the drift measurement. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
+    # disable. Shared env var with convert_flow_lm_main so a single
+    # override covers both bundles that use the same transformer.
+    use_fp32_softmax = (
+        _os.environ.get("POCKETTTS_FLOW_MAIN_FP16_SOFTMAX", "0") != "1"
+    )
+    ps = build_patched_submodules(use_fp32_softmax=use_fp32_softmax)
     main = ps.flow_lm_main
     wrap = _FlowLMMainPrefillWrap(main)
     wrap.eval()
@@ -203,8 +211,8 @@ def convert(save_path: Path) -> None:
     D = ps.head_dim
     dm = ps.d_model
     LOGGER.info(
-        "flow_lm_prefill: L=%d H=%d D=%d d_model=%d S_cap=%d S_text_pad=%d",
-        L, H, D, dm, S_CAP, S_TEXT_PAD,
+        "flow_lm_prefill: L=%d H=%d D=%d d_model=%d S_cap=%d S_text_pad=%d use_fp32_softmax=%s",
+        L, H, D, dm, S_CAP, S_TEXT_PAD, use_fp32_softmax,
     )
 
     example_inputs = _build_example_inputs(dm, L, H, D)
@@ -220,11 +228,23 @@ def convert(save_path: Path) -> None:
     ]
     outputs = [ct.TensorType(name="kv_cache_out")]
 
-    precision = (
-        ct.precision.FLOAT32
-        if _os.environ.get("POCKETTTS_FLOW_PREFILL_FP32", "0") == "1"
-        else ct.precision.FLOAT16
-    )
+    if _os.environ.get("POCKETTTS_FLOW_PREFILL_FP32", "0") == "1":
+        precision = ct.precision.FLOAT32
+    elif use_fp32_softmax:
+        # See convert_flow_lm_main.py for rationale: MIL-level
+        # FP16ComputePrecision pass with an op_selector that excludes
+        # softmax. Keeps weights fp16, forces softmax to fp32.
+        from coremltools.converters.mil.mil.passes.defs.quantization import (
+            FP16ComputePrecision,
+        )
+        # Shared fp32 op set with convert_flow_lm_main.py. See that file
+        # for rationale.
+        _FP32_OPS = {"softmax", "layer_norm"}
+        def _keep_fp32(op) -> bool:
+            return op.op_type not in _FP32_OPS
+        precision = FP16ComputePrecision(op_selector=_keep_fp32)
+    else:
+        precision = ct.precision.FLOAT16
     mlmodel = convert_and_save(
         traced, inputs=inputs, outputs=outputs, save_path=save_path,
         name="flow_lm_prefill", precision=precision,

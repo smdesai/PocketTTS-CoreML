@@ -177,6 +177,7 @@ def build_patched_submodules(
     lsd_decode_steps: int = 1,
     noise_clamp: float | None = None,
     eos_threshold: float = -4.0,
+    use_fp32_softmax: bool = True,
 ) -> PatchedSubmodules:
     """Load the reference TTSModel, then build patched equivalents for
     the two FlowLM submodules (main + flow) with the reference weights
@@ -231,6 +232,7 @@ def build_patched_submodules(
         num_heads=num_heads,
         num_layers=num_layers,
         dim_feedforward=dim_feedforward,
+        use_fp32_softmax=use_fp32_softmax,
     )
     main.eval()
     main.load_reference_weights(tts_model.flow_lm)

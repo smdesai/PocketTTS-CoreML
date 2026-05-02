@@ -99,7 +99,15 @@ class _FlowLMMainARWrap(nn.Module):
 
 
 def convert(save_path: Path, spot_offset: int = 3) -> None:
-    ps = build_patched_submodules()
+    # Selective fp32 softmax: default ON. Emits cast-up/softmax/cast-down
+    # around the attention reduction so CoreML keeps the softmax at fp32
+    # while weights stay fp16. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
+    # disable (reproduces the pre-fix all-fp16 bundle). See
+    # `docs/investigations/fp16_drift_localization.md`.
+    use_fp32_softmax = (
+        _os.environ.get("POCKETTTS_FLOW_MAIN_FP16_SOFTMAX", "0") != "1"
+    )
+    ps = build_patched_submodules(use_fp32_softmax=use_fp32_softmax)
     main = ps.flow_lm_main
     wrap = _FlowLMMainARWrap(main)
     wrap.eval()
@@ -110,8 +118,8 @@ def convert(save_path: Path, spot_offset: int = 3) -> None:
     ldim = ps.ldim
     dm = ps.d_model
     LOGGER.info(
-        "flow_lm_main: L=%d H=%d D=%d d_model=%d ldim=%d S_cap=%d",
-        L, H, D, dm, ldim, S_CAP,
+        "flow_lm_main: L=%d H=%d D=%d d_model=%d ldim=%d S_cap=%d use_fp32_softmax=%s",
+        L, H, D, dm, ldim, S_CAP, use_fp32_softmax,
     )
 
     # Example inputs at `spot_offset` so the graph sees nonzero mask positions.
@@ -143,11 +151,39 @@ def convert(save_path: Path, spot_offset: int = 3) -> None:
     # POCKETTTS_FLOW_MAIN_FP32=1 to convert with float32 compute
     # precision. Produces a ~2x-larger .mlpackage but gives 20+ dB
     # audio PSNR headroom for the end-to-end gate during development.
-    precision = (
-        ct.precision.FLOAT32
-        if _os.environ.get("POCKETTTS_FLOW_MAIN_FP32", "0") == "1"
-        else ct.precision.FLOAT16
-    )
+    if _os.environ.get("POCKETTTS_FLOW_MAIN_FP32", "0") == "1":
+        precision = ct.precision.FLOAT32
+    elif use_fp32_softmax:
+        # Selective fp32: weights + most ops at fp16, softmax stays fp32.
+        # The trace-level cast-up/cast-down (Approach A) was verified to
+        # survive the converter front-end but is aggressively fused away
+        # by MIL's `homogenize_input_dtypes` pass, which compresses the
+        # cast-fp16->cast-fp32->op->cast-fp16 chain back to all-fp16 when
+        # `compute_precision=FLOAT16` is passed as a bare enum. The MIL
+        # `FP16ComputePrecision` pass with an `op_selector` is the
+        # documented CoreML-LLM approach: it runs the fp16 cast insertion
+        # only on ops where the predicate returns True, leaving the
+        # excluded ops at their original fp32 dtype. This keeps weights
+        # fp16 (unchanged ship size) but routes the softmax through the
+        # fp32 register bank.
+        from coremltools.converters.mil.mil.passes.defs.quantization import (
+            FP16ComputePrecision,
+        )
+        # Keep fp32 for:
+        #   - softmax: the mostly-masked (255/256 at -65500) attention
+        #     reduction is the classic fp16 instability path (CoreML-LLM
+        #     open question #2 in docs/phase2_3_notes.md).
+        #   - layer_norm: per-layer variance/mean accumulated in fp16
+        #     contributes to long-context drift across the 6-layer AR
+        #     feedback loop (investigation §Recommendation #2). Softmax
+        #     alone recovered ~50% of the drift (corr +0.447 -> +0.673);
+        #     adding layer_norm recovers the rest.
+        _FP32_OPS = {"softmax", "layer_norm"}
+        def _keep_fp32(op) -> bool:
+            return op.op_type not in _FP32_OPS
+        precision = FP16ComputePrecision(op_selector=_keep_fp32)
+    else:
+        precision = ct.precision.FLOAT16
     mlmodel = convert_and_save(
         traced, inputs=inputs, outputs=outputs, save_path=save_path, name="flow_lm_main",
         precision=precision,

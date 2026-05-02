@@ -259,13 +259,19 @@ would show high similarity; waveform-PSNR is strict.
    met due to AR feedback accumulation in fp16; mitigation options
    documented in "End-to-end audio PSNR gate" above.
 
-2. **fp16 softmax stability on flow_lm_main**. The random-input
-   spot-check saw `max_abs` on the `ctx` output as large as ~0.9. This
-   is an expected fp16 accumulation artifact with mostly-masked
-   attention (255/256 positions at -65500). Once the full AR loop is
-   driven with realistic inputs, the worst-case should shrink because
-   the attended rows are never zero-mean noise. No action needed in
-   this cycle — revisit if the audio PSNR gate misses.
+2. **fp16 softmax stability on flow_lm_main**. **CLOSED 2026-05-02.**
+   The `flow_lm_drift` investigation localized the observed AR
+   amplitude drift to fp16 compute in the 6-layer transformer; the
+   follow-up cycle shipped a selective-fp32 fix that keeps softmax AND
+   layer_norm at fp32 compute (weights remain fp16, file size
+   unchanged at 144 MB). Envelope correlation vs fp32 reference went
+   from +0.447 → +0.932; per-frame ratio slope from +0.498 %/frame to
+   +0.027 %/frame. See
+   `docs/investigations/fp16_drift_localization.md` §"Fix applied" for
+   the measurements and the approach (coremltools
+   `FP16ComputePrecision` MIL pass with an op_selector that excludes
+   `{"softmax", "layer_norm"}`; PyTorch-side explicit casts alone were
+   fused away by `homogenize_input_dtypes`).
 
 3. **Compute-unit placement**. We did not inspect `MLComputePlan` for
    the 3 GREEN submodels — Phase-5 concern. `ct.convert` emitted no
