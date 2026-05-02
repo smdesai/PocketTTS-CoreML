@@ -43,6 +43,18 @@ public final class TTSViewModel {
     public var errorMessage: String? = nil
     public var isReady: Bool = false
 
+    /// Stats surfaced in the status card. Values are nil until populated
+    /// by load() (initSeconds) or generate() (rest). Reset at the start
+    /// of each generate so the card reflects the most recent run.
+    public struct Stats {
+        public var initSeconds: Double?         = nil  // model load + warmup (one-time)
+        public var firstAudioSeconds: Double?   = nil  // wall time to first PCM chunk
+        public var generateSeconds: Double?     = nil  // total wall time for this run
+        public var audioSeconds: Double?        = nil  // total audio duration generated
+        public var rtf: Double?                 = nil  // generateSeconds / audioSeconds
+    }
+    public var stats = Stats()
+
     /// The StreamingPlayer is observed directly by the View — we keep a
     /// strong reference here but the view sets up its own @StateObject.
     public let player: StreamingPlayer
@@ -64,6 +76,7 @@ public final class TTSViewModel {
     /// Async-load the model. Call from a `.task` modifier on the root view.
     public func load() async {
         guard !isReady && errorMessage == nil else { return }
+        let initStart = Date()
         do {
             let bundle = Bundle.main
             guard let artifactsDir = bundle.url(
@@ -100,6 +113,7 @@ public final class TTSViewModel {
                 )
             }
 
+            self.stats.initSeconds = Date().timeIntervalSince(initStart)
             self.isReady = true
             self.status = "Idle"
         } catch let err as PocketTTSLoadError {
@@ -125,6 +139,16 @@ public final class TTSViewModel {
         isGenerating = true
         errorMessage = nil
         generatedPCM = nil
+        // Replace the whole stats struct (preserving one-time initSeconds)
+        // so @Observable publishes a single change notification rather
+        // than four separate ones. Also guards against any edge case where
+        // nested-field mutation isn't picked up by the observer.
+        var s = stats
+        s.firstAudioSeconds = nil
+        s.generateSeconds = nil
+        s.audioSeconds = nil
+        s.rtf = nil
+        stats = s
 
         let text = preparedText()
         let chunks = TextChunker.splitIntoBestSentences(
@@ -139,16 +163,18 @@ public final class TTSViewModel {
                                    : "Generating (1/\(chunks.count))…"
 
         // Wrap in a plain Task<Void, Never> so it matches runningTask's
-        // type (used by stop()/cancelRunning()). We share the result via
-        // an actor-held box.
+        // type. Share the result (and a first-audio timestamp) via actor.
         actor ResultBox {
             var data: Data? = nil
             var error: Error? = nil
+            var firstPCMAt: Date? = nil
             func set(_ d: Data) { data = d }
             func fail(_ e: Error) { error = e }
-            func take() -> (Data?, Error?) { (data, error) }
+            func markFirstPCMIfNil(_ at: Date) { if firstPCMAt == nil { firstPCMAt = at } }
+            func take() -> (Data?, Error?, Date?) { (data, error, firstPCMAt) }
         }
         let box = ResultBox()
+        let wallStart = Date()
         let task = Task<Void, Never> {
             do {
                 var accum = Data()
@@ -161,6 +187,7 @@ public final class TTSViewModel {
                     let pcmStream = await tts.generate(text: chunkText, voice: handle)
                     for try await pcm in pcmStream {
                         try Task.checkCancellation()
+                        await box.markFirstPCMIfNil(Date())
                         accum.append(pcm)
                     }
                 }
@@ -172,13 +199,22 @@ public final class TTSViewModel {
         self.runningTask = task
         await task.value
 
-        let (accumOpt, errOpt) = await box.take()
+        let (accumOpt, errOpt, firstPCMAt) = await box.take()
+        let wallSeconds = Date().timeIntervalSince(wallStart)
         do {
             if let err = errOpt { throw err }
             let accum = accumOpt ?? Data()
             self.generatedPCM = accum
-            let seconds = Double(accum.count / 2) / Double(PocketTTSArch.sampleRate)
-            self.status = String(format: "Generated %.2fs of audio — tap Play", seconds)
+            let audio = Double(accum.count / 2) / Double(PocketTTSArch.sampleRate)
+            var s = self.stats
+            s.audioSeconds = audio
+            s.generateSeconds = wallSeconds
+            s.rtf = audio > 0 ? wallSeconds / audio : nil
+            if let firstAt = firstPCMAt {
+                s.firstAudioSeconds = firstAt.timeIntervalSince(wallStart)
+            }
+            self.stats = s
+            self.status = "Audio ready"
         } catch is CancellationError {
             self.status = "Stopped"
         } catch {
@@ -208,6 +244,13 @@ public final class TTSViewModel {
               let tokenizer = tokenizer else { return }
         cancelRunning()
         errorMessage = nil
+        // Reset per-run stats so the card reflects this streaming session.
+        var s = stats
+        s.firstAudioSeconds = nil
+        s.generateSeconds = nil
+        s.audioSeconds = nil
+        s.rtf = nil
+        stats = s
 
         let text = preparedText()
         // fp16 drift on-device causes AR amplitude decay after ~40 frames
@@ -224,8 +267,11 @@ public final class TTSViewModel {
 
         isStreaming = true
         status = "Streaming (1/\(chunks.count))…"
+        let wallStart = Date()
         do {
-            try await runStream(chunks: chunks, voice: voice, tts: tts)
+            try await runStream(
+                chunks: chunks, voice: voice, tts: tts, wallStart: wallStart
+            )
         } catch is CancellationError {
             status = "Stopped"
         } catch {
@@ -250,13 +296,25 @@ public final class TTSViewModel {
     // MARK: - Streaming machinery
 
     private func runStream(
-        chunks: [String], voice: VoiceEntry, tts: PocketTTS
+        chunks: [String], voice: VoiceEntry, tts: PocketTTS, wallStart: Date
     ) async throws {
         try player.startStream(totalChunks: chunks.count)
 
         // Back-pressured async sequence: at most 2 chunks produced ahead
         // of consumption. We use a tiny actor-based buffer.
         let channel = BoundedChannel<(Int, Data)>(capacity: 2)
+
+        // Shared mutable state between producer + consumer: first-pcm
+        // timestamp and total bytes emitted. Use an actor so both tasks
+        // can update it safely.
+        actor StreamMetrics {
+            var firstPCMAt: Date? = nil
+            var totalBytes: Int = 0
+            func markFirstPCMIfNil(_ at: Date) { if firstPCMAt == nil { firstPCMAt = at } }
+            func addBytes(_ n: Int) { totalBytes += n }
+            func take() -> (Date?, Int) { (firstPCMAt, totalBytes) }
+        }
+        let metrics = StreamMetrics()
 
         // Producer task: generate each chunk's full PCM, push to channel.
         // IMPORTANT: fresh VoiceHandle per chunk. The orchestrator mutates
@@ -271,8 +329,10 @@ public final class TTSViewModel {
                     var accum = Data()
                     for try await pcm in pcmStream {
                         try Task.checkCancellation()
+                        await metrics.markFirstPCMIfNil(Date())
                         accum.append(pcm)
                     }
+                    await metrics.addBytes(accum.count)
                     try await channel.send((idx, accum))
                     _ = idx  // idx used only for enumerated()
                 }
@@ -294,7 +354,17 @@ public final class TTSViewModel {
             while let (idx, pcm) = try await channel.receive() {
                 try Task.checkCancellation()
                 self.status = "Streaming (\(idx + 1)/\(chunks.count))…"
+                // First time we push a chunk to the player, we know the
+                // first audio has been generated — publish stats now so
+                // the card updates while the stream is still playing.
+                let (firstAt, totalBytes) = await metrics.take()
+                if let firstAt = firstAt, self.stats.firstAudioSeconds == nil {
+                    var s = self.stats
+                    s.firstAudioSeconds = firstAt.timeIntervalSince(wallStart)
+                    self.stats = s
+                }
                 player.pushChunk(pcm, sampleRate: Double(PocketTTSArch.sampleRate))
+                _ = totalBytes  // final totals updated after loop
             }
         } catch {
             producer.cancel()
@@ -306,6 +376,23 @@ public final class TTSViewModel {
             try await Task.sleep(nanoseconds: 100_000_000)
             if Task.isCancelled { throw CancellationError() }
         }
+
+        // Publish final stats once playback has drained. Generation wall
+        // time is measured from `wallStart` (stream() entry) to the
+        // moment the producer finished its last chunk — which is
+        // approximately `now - drainTime`. We use `now` as an
+        // overestimate and accept the small additional drain tail as
+        // part of "time until user hears last audio".
+        let (firstAt, totalBytes) = await metrics.take()
+        var s = self.stats
+        let audio = Double(totalBytes / 2) / Double(PocketTTSArch.sampleRate)
+        s.audioSeconds = audio
+        s.generateSeconds = Date().timeIntervalSince(wallStart)
+        s.rtf = audio > 0 ? s.generateSeconds! / audio : nil
+        if let firstAt = firstAt, s.firstAudioSeconds == nil {
+            s.firstAudioSeconds = firstAt.timeIntervalSince(wallStart)
+        }
+        self.stats = s
 
         status = "Done"
     }
@@ -326,6 +413,49 @@ public final class TTSViewModel {
         for entry: VoiceEntry, on tts: PocketTTS
     ) async throws -> VoiceHandle {
         return try await tts.loadVoice(from: entry.url)
+    }
+
+    /// Write `generatedPCM` to a WAV file in the user's tmp dir and return
+    /// the URL. Returns nil if there is no audio yet. Used by the Share
+    /// button to hand a URL to UIActivityViewController.
+    public func exportGeneratedAsWav() -> URL? {
+        guard let pcm = generatedPCM, !pcm.isEmpty else { return nil }
+        let sr: UInt32 = UInt32(PocketTTSArch.sampleRate)
+        let stem = (selectedVoice?.id ?? "voice") + "-\(Int(Date().timeIntervalSince1970))"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pockettts-\(stem).wav")
+        var data = Data()
+        data.append(wavHeader(samples: pcm.count / 2, sampleRate: sr))
+        data.append(pcm)
+        do {
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private func wavHeader(samples: Int, sampleRate: UInt32) -> Data {
+        // RIFF/WAV PCM16 mono header.
+        let byteRate = sampleRate * 2           // 1 channel * 2 bytes/sample
+        let blockAlign: UInt16 = 2
+        let subchunk2: UInt32 = UInt32(samples) * 2
+        let chunkSize: UInt32 = 36 + subchunk2
+        var h = Data()
+        h.append("RIFF".data(using: .ascii)!)
+        h.append(UInt32(chunkSize).littleEndianData)
+        h.append("WAVE".data(using: .ascii)!)
+        h.append("fmt ".data(using: .ascii)!)
+        h.append(UInt32(16).littleEndianData)   // subchunk1 size
+        h.append(UInt16(1).littleEndianData)    // PCM format
+        h.append(UInt16(1).littleEndianData)    // channels
+        h.append(sampleRate.littleEndianData)
+        h.append(byteRate.littleEndianData)
+        h.append(blockAlign.littleEndianData)
+        h.append(UInt16(16).littleEndianData)   // bits per sample
+        h.append("data".data(using: .ascii)!)
+        h.append(subchunk2.littleEndianData)
+        return h
     }
 
     private func preparedText() -> String {
@@ -408,5 +538,13 @@ actor BoundedChannel<Element: Sendable> {
         recvWaiters.removeAll()
         for w in sendWaiters { w.resume(throwing: CancellationError()) }
         sendWaiters.removeAll()
+    }
+}
+
+// MARK: - WAV helpers
+
+private extension FixedWidthInteger {
+    var littleEndianData: Data {
+        withUnsafeBytes(of: self.littleEndian) { Data($0) }
     }
 }
