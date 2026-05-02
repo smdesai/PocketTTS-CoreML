@@ -18,6 +18,7 @@ Artifacts/
 # `python -m pockettts_coreml.oracle.dump_golden`.
 pockettts_coreml/oracle/fixtures/english_alba_seed42/*.safetensors
 pockettts_coreml/oracle/fixtures/english_alba_seed42/*.wav
+pockettts_coreml/oracle/fixtures/english_alba_seed42/*.model
 pockettts_coreml/oracle/fixtures/english_alba_seed42/golden/
 pockettts_coreml/oracle/fixtures/english_alba_seed42/metadata.json
 
@@ -31,3 +32,11 @@ pockettts_coreml/oracle/fixtures/english_alba_seed42/metadata.json
 # Claude agent internal state
 .claude/cache/
 .claude/settings.local.json
+
+# Scratch / local artifacts
+/*.wav
+tests/_scratch*.py
+
+# SwiftPM build products
+PocketTTSCoreML/.build/
+PocketTTSCoreML/.swiftpm/
