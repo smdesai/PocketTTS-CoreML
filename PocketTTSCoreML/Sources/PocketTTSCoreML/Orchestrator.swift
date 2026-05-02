@@ -202,8 +202,19 @@ public final class Orchestrator: @unchecked Sendable {
         _ = flowMainFeatures
 
         var stepLatent = [Float](repeating: 0, count: PocketTTSArch.latentDim)
+        var kvExhausted = false
 
         for gen in 0..<maxGenLen {
+            // KV cache is S_cap=256 positions. When we've filled it, stop
+            // cleanly with whatever audio we have rather than crashing in
+            // Masks.additiveAttentionMaskStepFp16's precondition. Callers
+            // wanting longer utterances must chunk at sentence boundaries
+            // (TextChunker.splitIntoBestSentences) and run one generate()
+            // per chunk.
+            if currentOffset >= PocketTTSArch.flowSCap {
+                kvExhausted = true
+                break
+            }
             try autoreleasepool {
                 // ---- FLOW LM MAIN STEP (fp16 I/O) ----
                 let offsetMask = try Masks.oneHotOffsetMaskFp16(
@@ -320,6 +331,16 @@ public final class Orchestrator: @unchecked Sendable {
             if let eos = eosStep, gen >= eos + options.framesAfterEos {
                 break
             }
+        }
+        if kvExhausted {
+            // Emit one warning line to stderr; the caller gets clean finish
+            // of the stream via AsyncThrowingStream.Continuation (we don't
+            // throw here because we already produced audio). Apps that want
+            // to generate long text must split at sentence boundaries; see
+            // TextChunker.splitIntoBestSentences in the package.
+            FileHandle.standardError.write(Data(
+                "PocketTTS: KV cache S_cap=\(PocketTTSArch.flowSCap) exhausted at offset=\(currentOffset); stopped early. Split text at sentence boundaries for longer output.\n".utf8
+            ))
         }
     }
 
