@@ -1,0 +1,70 @@
+name: iOSBenchmark
+options:
+  bundleIdPrefix: com.sdesai.pockettts.benchmark
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Automatic code signing — the user picks their team in Xcode. No team
+    # id is hard-coded here so this project stays machine-independent.
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages:
+  PocketTTSCoreML:
+    # Consume the SwiftPM package two levels up.
+    path: ../..
+
+targets:
+  iOSBenchmark:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: iOSBenchmark
+        excludes:
+          - "Resources"          # included below explicitly
+          - "Info.plist"         # declared via info.path
+      # Bundled Artifacts folder (folder reference preserves .mlpackage
+      # sub-directory layout — an mlpackage is itself a directory).
+      - path: iOSBenchmark/Resources/Artifacts
+        type: folder
+        buildPhase: resources
+      - path: iOSBenchmark/Resources/alba.safetensors
+        buildPhase: resources
+      - path: iOSBenchmark/Resources/tokenizer.model
+        buildPhase: resources
+    dependencies:
+      - package: PocketTTSCoreML
+        product: PocketTTSCoreML
+    info:
+      path: iOSBenchmark/Info.plist
+      properties:
+        CFBundleDisplayName: PocketTTS RTF
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Background audio is useful for real TTS streaming, but the
+        # benchmark app doesn't need it — keep the entitlement footprint
+        # minimal so automatic signing "just works".
+        UIViewControllerBasedStatusBarAppearance: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.benchmark.iOSBenchmark
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: "YES"
+        SWIFT_VERSION: "6.0"
+        # Metal-Cpp / AVFoundation not needed; CoreML pulls in what it needs.

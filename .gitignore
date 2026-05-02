@@ -40,3 +40,18 @@ tests/_scratch*.py
 # SwiftPM build products
 PocketTTSCoreML/.build/
 PocketTTSCoreML/.swiftpm/
+
+# iOS bundled artifacts: regenerate locally from /Artifacts/en_alba_fp16_mlmodelc.
+# See PocketTTSCoreML/Examples/iOSBenchmark/README.md for the copy recipe.
+PocketTTSCoreML/Examples/**/Resources/Artifacts/
+PocketTTSCoreML/Examples/**/Resources/*.safetensors
+PocketTTSCoreML/Examples/**/Resources/*.model
+
+# Xcode per-user state
+**/xcuserdata/
+
+# Voice embeddings (CC-BY-NC-SA; regenerate from HF)
+voices/
+
+# Pre-compiled CoreML artifacts (regenerate with xcrun coremlcompiler)
+Artifacts/en_alba_fp16_mlmodelc/
