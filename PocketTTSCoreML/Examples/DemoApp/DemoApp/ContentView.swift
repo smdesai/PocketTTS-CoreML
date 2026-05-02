@@ -1,20 +1,20 @@
 //
-// ContentView.swift
-//
-// The whole UI:
-//  - voice picker
-//  - multiline text editor
-//  - Generate / Play / Stream / Stop buttons
-//  - status label
+// ContentView.swift — redesign per mockup:
+//   - large title
+//   - Voice card (compact row with Menu)
+//   - Text card (header + clear button, char count in bottom-right)
+//   - Status card (tinted; Audio-ready stats or streaming/error state)
+//   - Bottom bar: Generate / Stream / Play / Share (all icons + labels)
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
-    @State private var viewModel = TTSViewModel()
-    // StreamingPlayer's @Published state drives button enablement; observe
-    // it as a StateObject so the view re-renders on playback transitions.
+    @State private var viewModel: TTSViewModel
     @StateObject private var playerBinder: PlayerBinder
+    @State private var shareItem: ShareItem? = nil
+    @State private var showVoiceSheet: Bool = false
 
     init() {
         let vm = TTSViewModel()
@@ -24,155 +24,421 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let err = viewModel.errorMessage {
-                        errorBanner(err)
+            ZStack(alignment: .bottom) {
+                // Scrollable content above the bottom bar.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("PocketTTS CoreML")
+                            .font(.system(size: 34, weight: .bold))
+                            .padding(.top, 4)
+
+                        voiceCard
+                        textCard
+                        statusCard
                     }
-                    voiceSection
-                    textSection
-                    actionRow
-                    statusSection
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 120)  // room for bottom bar
                 }
-                .padding()
+                .scrollDismissesKeyboard(.interactively)
+                // Tap-to-dismiss: any tap that falls through to the
+                // background (not on a control) resigns first responder.
+                // Use `simultaneousGesture` with `.onEnded` and `.high`
+                // priority so buttons/menus still receive their taps.
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { dismissKeyboard() }
+                )
+
+                bottomBar
             }
-            .navigationTitle("PocketTTS Demo")
-            .task {
-                await viewModel.load()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .task { await viewModel.load() }
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: [item.url])
             }
         }
     }
 
-    // MARK: - Sections
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
+    }
 
-    private var voiceSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Voice").font(.subheadline).foregroundStyle(.secondary)
-            VoicePickerView(
+    // MARK: - Voice card
+
+    private var voiceCard: some View {
+        Button {
+            guard !viewModel.isGenerating,
+                  !viewModel.isStreaming,
+                  !viewModel.voices.isEmpty else { return }
+            dismissKeyboard()
+            showVoiceSheet = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.white.opacity(0.08)).frame(width: 28, height: 28)
+                    Image(systemName: "waveform")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                Text("Voice")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(viewModel.selectedVoice?.displayName ?? "—")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(cardBackground)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isGenerating || viewModel.isStreaming || viewModel.voices.isEmpty)
+        .sheet(isPresented: $showVoiceSheet) {
+            VoiceListSheet(
                 voices: viewModel.voices,
-                selection: Binding(
-                    get: { viewModel.selectedVoice },
-                    set: { viewModel.selectedVoice = $0 }
-                ),
-                disabled: viewModel.isGenerating || viewModel.isStreaming
+                selectedID: viewModel.selectedVoice?.id,
+                onPick: { voice in
+                    viewModel.selectedVoice = voice
+                    showVoiceSheet = false
+                },
+                onCancel: { showVoiceSheet = false }
             )
         }
     }
 
-    private var textSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Text").font(.subheadline).foregroundStyle(.secondary)
-            TextEditor(text: Binding(
-                get: { viewModel.text },
-                set: { viewModel.text = $0 }
-            ))
-            .frame(minHeight: 140, maxHeight: 240)
-            .padding(8)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .disabled(viewModel.isGenerating || viewModel.isStreaming)
-        }
-    }
+    // MARK: - Text card
 
-    private var actionRow: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button {
-                    Task { await viewModel.generate() }
-                } label: {
-                    Label("Generate", systemImage: "waveform")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.isReady
-                          || viewModel.isGenerating
-                          || viewModel.isStreaming)
-
-                Button {
-                    Task { await viewModel.play() }
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.generatedPCM == nil
-                          || viewModel.isStreaming
-                          || playerBinder.isPlaying)
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await viewModel.stream() }
-                } label: {
-                    Label("Stream", systemImage: "dot.radiowaves.left.and.right")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!viewModel.isReady
-                          || viewModel.isGenerating
-                          || viewModel.isStreaming)
-
-                Button(role: .destructive) {
-                    viewModel.stop()
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!(viewModel.isStreaming
-                            || viewModel.isGenerating
-                            || playerBinder.isPlaying))
-            }
-        }
-    }
-
-    private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Status").font(.subheadline).foregroundStyle(.secondary)
+    private var textCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                if viewModel.isGenerating || viewModel.isStreaming {
-                    ProgressView().controlSize(.small)
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Text to Speak")
+                    .font(.system(size: 18, weight: .semibold))
+                Spacer()
+                Button("Clear") {
+                    viewModel.text = ""
                 }
-                Text(statusString)
-                    .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .disabled(
+                    viewModel.text.isEmpty ||
+                    viewModel.isGenerating ||
+                    viewModel.isStreaming
+                )
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            TextEditor(text: $viewModel.text)
+                .font(.system(size: 17))
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 180, maxHeight: 260)
+                .disabled(viewModel.isGenerating || viewModel.isStreaming)
+                .autocorrectionDisabled(false)
+                .textInputAutocapitalization(.sentences)
+
+            HStack {
+                Spacer()
+                Text("\(viewModel.text.count) characters")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(cardBackground)
+    }
+
+    // MARK: - Status card
+
+    private var statusCard: some View {
+        Group {
+            if let err = viewModel.errorMessage {
+                statusBody(
+                    tint: .red,
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Error",
+                    subtitle: err
+                )
+            } else if viewModel.isGenerating {
+                statusBody(
+                    tint: .blue,
+                    icon: "waveform",
+                    title: viewModel.status,
+                    subtitle: nil,
+                    showSpinner: true
+                )
+            } else if viewModel.isStreaming {
+                let label: String = {
+                    if playerBinder.totalChunks > 0 {
+                        let cur = min(max(playerBinder.currentChunk, 1),
+                                      playerBinder.totalChunks)
+                        return "Streaming \(cur)/\(playerBinder.totalChunks)"
+                    }
+                    return "Streaming"
+                }()
+                statusBody(
+                    tint: .orange,
+                    icon: "dot.radiowaves.left.and.right",
+                    title: label,
+                    // Show stats live during streaming once we have any
+                    // (first-audio ticks as soon as the first chunk
+                    // generates; audio+gen+RTF fill in on completion).
+                    subtitle: statsSubtitle,
+                    showSpinner: true
+                )
+            } else if viewModel.generatedPCM != nil
+                      || viewModel.stats.audioSeconds != nil {
+                // "Audio ready" covers both Generate (has playable PCM)
+                // and Stream (no stored PCM but stats are populated).
+                statusBody(
+                    tint: .green,
+                    icon: "checkmark",
+                    title: "Audio ready",
+                    subtitle: statsSubtitle
+                )
+            } else if !viewModel.isReady {
+                statusBody(
+                    tint: .gray,
+                    icon: "clock",
+                    title: viewModel.status,
+                    subtitle: statsSubtitle,
+                    showSpinner: true
+                )
+            } else {
+                statusBody(
+                    tint: .gray,
+                    icon: "checkmark",
+                    title: "Ready",
+                    subtitle: statsSubtitle
+                )
+            }
         }
     }
 
-    private var statusString: String {
-        if viewModel.isStreaming && playerBinder.totalChunks > 0 {
-            let cur = min(
-                max(playerBinder.currentChunk, 1),
-                playerBinder.totalChunks
-            )
-            return "Streaming (\(cur)/\(playerBinder.totalChunks))…"
+    private var statsSubtitle: String? {
+        var parts: [String] = []
+        if let init_ = viewModel.stats.initSeconds {
+            parts.append(String(format: "Init: %.2fs", init_))
         }
-        if playerBinder.isPlaying && !viewModel.isStreaming {
-            return "Playing…"
+        if let first = viewModel.stats.firstAudioSeconds {
+            parts.append(String(format: "First audio: %.2fs", first))
         }
-        return viewModel.status
+        if let gen = viewModel.stats.generateSeconds {
+            parts.append(String(format: "Gen: %.2fs", gen))
+        }
+        if let audio = viewModel.stats.audioSeconds {
+            parts.append(String(format: "Audio: %.2fs", audio))
+        }
+        if let rtf = viewModel.stats.rtf {
+            parts.append(String(format: "RTF %.2fx", rtf))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
-    private func errorBanner(_ msg: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Error").font(.headline).foregroundStyle(.red)
-            Text(msg).font(.caption.monospaced())
+    private func statusBody(
+        tint: Color,
+        icon: String,
+        title: String,
+        subtitle: String?,
+        showSpinner: Bool = false
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle().fill(tint).frame(width: 34, height: 34)
+                if showSpinner {
+                    ProgressView()
+                        .tint(.white)
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
         }
-        .padding()
-        .background(Color.red.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.12))
+        )
+    }
+
+    // MARK: - Bottom bar
+
+    private var bottomBar: some View {
+        HStack(spacing: 0) {
+            barButton(
+                title: "Generate",
+                systemImage: "waveform",
+                tint: .accentColor,
+                enabled: viewModel.isReady
+                         && !viewModel.isGenerating
+                         && !viewModel.isStreaming
+            ) {
+                Task { await viewModel.generate() }
+            }
+
+            barButton(
+                title: "Stream",
+                systemImage: "dot.radiowaves.left.and.right",
+                tint: .orange,
+                enabled: viewModel.isReady
+                         && !viewModel.isGenerating
+                         && !viewModel.isStreaming
+            ) {
+                Task { await viewModel.stream() }
+            }
+
+            if viewModel.isStreaming || playerBinder.isPlaying {
+                barButton(
+                    title: "Stop",
+                    systemImage: "stop.fill",
+                    tint: .red,
+                    enabled: true
+                ) {
+                    viewModel.stop()
+                }
+            } else {
+                barButton(
+                    title: "Play",
+                    systemImage: "play.fill",
+                    tint: .white,
+                    enabled: viewModel.generatedPCM != nil
+                ) {
+                    Task { await viewModel.play() }
+                }
+            }
+
+            barButton(
+                title: "Share",
+                systemImage: "square.and.arrow.up",
+                tint: .white,
+                enabled: viewModel.generatedPCM != nil
+            ) {
+                if let url = viewModel.exportGeneratedAsWav() {
+                    shareItem = ShareItem(url: url)
+                }
+            }
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 20)
+        .background(.thinMaterial)
+    }
+
+    private func barButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 22, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 13))
+            }
+            .foregroundStyle(enabled ? tint : Color.secondary)
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(!enabled)
+    }
+
+    // MARK: - Card background
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Color(.secondarySystemBackground))
     }
 }
 
-/// Adapts StreamingPlayer's ObservableObject @Published state into something
-/// a SwiftUI @StateObject can observe for button-enablement purposes. We
-/// can't make the @Observable TTSViewModel own it directly without losing
-/// Combine publisher observability, so this thin relay wraps it.
+// MARK: - Share sheet (UIActivityViewController wrapper)
+
+// MARK: - Voice picker sheet
+
+/// Full-screen sheet with one row per voice. Sheet-based selection is
+/// immune to the hit-test flakiness Menu/Picker can show when they sit
+/// inside a custom card layout with nearby tap gestures.
+private struct VoiceListSheet: View {
+    let voices: [VoiceEntry]
+    let selectedID: String?
+    let onPick: (VoiceEntry) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(voices) { voice in
+                    Button {
+                        onPick(voice)
+                    } label: {
+                        HStack {
+                            Text(voice.displayName)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if voice.id == selectedID {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("Select voice")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", action: onCancel)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - StreamingPlayer → @Published relay
+
 @MainActor
 final class PlayerBinder: ObservableObject {
     @Published var isPlaying: Bool = false
@@ -187,9 +453,6 @@ final class PlayerBinder: ObservableObject {
     }
 
     private func observe() {
-        // Minimal KVO-free relay: poll via a periodic Task. AVAudioEngine's
-        // completion handlers already update @Published properties on the
-        // player; a 10 Hz poll is plenty for UI state.
         Task { @MainActor [weak self] in
             guard let self = self else { return }
             while !Task.isCancelled {
