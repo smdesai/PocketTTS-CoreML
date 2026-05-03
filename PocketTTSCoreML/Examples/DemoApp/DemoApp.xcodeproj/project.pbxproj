@@ -12,7 +12,9 @@
 		8AEE08FED45C2CB6798B1D88 /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */; };
 		AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C558F4562A2F0D78FC9C88A8 /* ContentView.swift */; };
 		AC60E3310793FFCE1C4A3B5F /* Languages in Resources */ = {isa = PBXBuildFile; fileRef = B07B05E7EBAE6A1C049E692F /* Languages */; };
+		BDCDCA20936D64D474CFA645 /* CloneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991B3F076DBF7BF77FE1E0FF /* CloneSheet.swift */; };
 		DFA0256A139D0EF6D51130AF /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 5BFA6417318D8A26B3B9B3E5 /* PocketTTSCoreML */; };
+		F15150280FE70C1740C00C62 /* CloneRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BB8F813047C0219B992C09E /* CloneRecorder.swift */; };
 		FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95338D23F36161FB31B3904D /* StreamingPlayer.swift */; };
 /* End PBXBuildFile section */
 
@@ -22,6 +24,8 @@
 		5D88526D45AC51AD780564F8 /* TTSViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSViewModel.swift; sourceTree = "<group>"; };
 		8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCatalog.swift; sourceTree = "<group>"; };
 		95338D23F36161FB31B3904D /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
+		991B3F076DBF7BF77FE1E0FF /* CloneSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneSheet.swift; sourceTree = "<group>"; };
+		9BB8F813047C0219B992C09E /* CloneRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneRecorder.swift; sourceTree = "<group>"; };
 		B07B05E7EBAE6A1C049E692F /* Languages */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Languages; path = DemoApp/Resources/Languages; sourceTree = SOURCE_ROOT; };
 		C558F4562A2F0D78FC9C88A8 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E03DECCC43EE647A543BD618 /* DemoAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoAppApp.swift; sourceTree = "<group>"; };
@@ -75,6 +79,8 @@
 		F1DF8958A1BCF35E04E58873 /* DemoApp */ = {
 			isa = PBXGroup;
 			children = (
+				9BB8F813047C0219B992C09E /* CloneRecorder.swift */,
+				991B3F076DBF7BF77FE1E0FF /* CloneSheet.swift */,
 				C558F4562A2F0D78FC9C88A8 /* ContentView.swift */,
 				E03DECCC43EE647A543BD618 /* DemoAppApp.swift */,
 				95338D23F36161FB31B3904D /* StreamingPlayer.swift */,
@@ -159,6 +165,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F15150280FE70C1740C00C62 /* CloneRecorder.swift in Sources */,
+				BDCDCA20936D64D474CFA645 /* CloneSheet.swift in Sources */,
 				AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */,
 				7747C7646C100FF7FA2C55F9 /* DemoAppApp.swift in Sources */,
 				FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */,

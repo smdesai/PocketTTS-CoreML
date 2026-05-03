@@ -2,15 +2,17 @@
 // VoiceCatalog.swift
 //
 // Enumerates voice .safetensors files that were copied into the app bundle
-// by prepare_resources.sh. A voice file's filename stem is used as the id;
-// the display name is computed by splitting on '_' and title-casing each
-// part ("peter_yearsley" -> "Peter Yearsley").
+// by prepare_resources.sh, AND (new) any user-cloned voices stored under
+// Documents/ClonedVoices/<languageID>/. A voice file's filename stem is
+// used as the id; the display name is computed by splitting on '_' and
+// title-casing each part ("peter_yearsley" -> "Peter Yearsley").
 //
 // Per-language layout (expected on disk):
 //
-//   Resources/Languages/<id>/Voices/*.safetensors
-//   Resources/Languages/<id>/Artifacts/...
-//   Resources/Languages/<id>/tokenizer.model
+//   Bundle:    Resources/Languages/<id>/Voices/*.safetensors    (read-only, bundled)
+//   Bundle:    Resources/Languages/<id>/Artifacts/...
+//   Bundle:    Resources/Languages/<id>/tokenizer.model
+//   Writable:  Documents/ClonedVoices/<id>/*.safetensors        (user clones)
 //
 // A legacy single-language layout (Resources/Voices/...) is still honored
 // as a fallback by `VoiceCatalog.bundled()` (no language id) so older demo
@@ -24,14 +26,28 @@ public struct VoiceEntry: Identifiable, Hashable, Sendable {
     public let id: String
     /// Human-readable title-cased name (e.g. "Bill Boerst").
     public let displayName: String
-    /// Absolute URL inside the app bundle.
+    /// Absolute URL inside the app bundle or Documents dir.
     public let url: URL
     /// Language code ("en", "es", "de", "it", "pt", "fr"). Empty for the
     /// legacy single-language bundle.
     public let language: String
+    /// True for user-cloned voices stored under Documents/ClonedVoices/.
+    /// Bundled voices set this to false. Cloned voices are rendered with
+    /// a "(cloned)" suffix + custom icon in VoiceListSheet and can be
+    /// deleted via swipe-to-delete.
+    public let isCloned: Bool
 }
 
 public enum VoiceCatalog {
+
+    /// Combined list of bundled + cloned voices for the given language,
+    /// sorted alphabetically by displayName. Cloned voices appear inline
+    /// with the bundled ones; use `VoiceEntry.isCloned` to distinguish.
+    public static func all(for language: String) -> [VoiceEntry] {
+        let bundled = self.bundled(for: language)
+        let cloned = self.cloned(for: language)
+        return (bundled + cloned).sorted { $0.displayName < $1.displayName }
+    }
 
     /// Return `.safetensors` voices bundled under `Resources/Languages/<id>/Voices/`,
     /// sorted alphabetically by displayName. Falls back to an empty array
@@ -39,7 +55,17 @@ public enum VoiceCatalog {
     /// language).
     public static func bundled(for language: String) -> [VoiceEntry] {
         guard let voicesDir = resolveVoicesDir(language: language) else { return [] }
-        return scanVoices(at: voicesDir, language: language)
+        return scanVoices(at: voicesDir, language: language, isCloned: false)
+    }
+
+    /// Return user-cloned voices saved under
+    /// `Documents/ClonedVoices/<languageID>/*.safetensors`. Empty if the
+    /// user hasn't cloned anything for this language yet.
+    public static func cloned(for language: String) -> [VoiceEntry] {
+        let dir = clonedVoicesDir(for: language)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: dir.path) else { return [] }
+        return scanVoices(at: dir, language: language, isCloned: true)
     }
 
     /// Legacy flat-layout enumeration (pre language-picker demos). Returns
@@ -47,10 +73,76 @@ public enum VoiceCatalog {
     /// bundle root, with an empty `language` field.
     public static func bundled() -> [VoiceEntry] {
         guard let voicesDir = resolveFlatVoicesDir() else { return [] }
-        return scanVoices(at: voicesDir, language: "")
+        return scanVoices(at: voicesDir, language: "", isCloned: false)
     }
 
-    private static func scanVoices(at voicesDir: URL, language: String) -> [VoiceEntry] {
+    // MARK: - Cloned voice persistence
+
+    /// Writable directory where cloned voices for `language` are stored.
+    /// Always creates the directory on demand — callers don't need to
+    /// guard against it being missing.
+    public static func clonedVoicesDir(for language: String) -> URL {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? fm.temporaryDirectory
+        let dir = docs
+            .appendingPathComponent("ClonedVoices", isDirectory: true)
+            .appendingPathComponent(language, isDirectory: true)
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+
+    /// Build the destination URL for a named clone in the given language.
+    /// Name is sanitized to alphanumerics + underscore; empty names fall
+    /// back to a timestamp. Does NOT check for collisions — caller is
+    /// expected to add a "(2)"-style disambiguator if they want one.
+    public static func clonedVoiceURL(language: String, rawName: String) -> URL {
+        let sanitized = sanitizeName(rawName)
+        let stem = sanitized.isEmpty ? "clone_\(Int(Date().timeIntervalSince1970))" : sanitized
+        return clonedVoicesDir(for: language)
+            .appendingPathComponent("\(stem).safetensors")
+    }
+
+    /// Delete a cloned voice from disk. Returns true if removed. Throws
+    /// an error if the entry is bundled (callers should guard but this is
+    /// a belt-and-braces safety check against accidental deletion of
+    /// read-only bundle content).
+    public static func deleteCloned(_ entry: VoiceEntry) throws {
+        guard entry.isCloned else {
+            throw NSError(domain: "VoiceCatalog", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Refusing to delete bundled voice \(entry.id)"
+            ])
+        }
+        try FileManager.default.removeItem(at: entry.url)
+    }
+
+    /// Check whether voice cloning is available for `language`. Cloning
+    /// requires `Resources/Languages/<id>/Artifacts/speaker_proj.safetensors`
+    /// to be present (it's an optional sidecar emitted by
+    /// `pockettts_coreml.convert.export_speaker_proj`).
+    public static func cloningAvailable(for language: String) -> Bool {
+        guard let base = Bundle.main.resourceURL else { return false }
+        let proj = base
+            .appendingPathComponent("Languages", isDirectory: true)
+            .appendingPathComponent(language, isDirectory: true)
+            .appendingPathComponent("Artifacts", isDirectory: true)
+            .appendingPathComponent("speaker_proj.safetensors")
+        return FileManager.default.fileExists(atPath: proj.path)
+    }
+
+    // MARK: - Internals
+
+    private static func sanitizeName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+        return String(trimmed.map { allowed.contains($0) ? $0 : "_" })
+    }
+
+    private static func scanVoices(
+        at voicesDir: URL, language: String, isCloned: Bool
+    ) -> [VoiceEntry] {
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(
             at: voicesDir,
@@ -66,7 +158,8 @@ public enum VoiceCatalog {
                 id: stem,
                 displayName: titleCase(stem),
                 url: url,
-                language: language
+                language: language,
+                isCloned: isCloned
             ))
         }
         entries.sort { $0.displayName < $1.displayName }

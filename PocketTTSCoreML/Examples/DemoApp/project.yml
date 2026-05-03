@@ -49,6 +49,11 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UIBackgroundModes:
           - audio
+        # Microphone usage: required for the voice-cloning flow in
+        # CloneSheet.swift. The user can either record a ~4s reference
+        # clip or pick an existing audio file; the record path prompts
+        # for mic permission via AVCaptureDevice.requestAccess.
+        NSMicrophoneUsageDescription: "PocketTTS Demo needs microphone access to clone your voice."
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
