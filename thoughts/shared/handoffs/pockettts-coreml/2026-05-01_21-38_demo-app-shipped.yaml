@@ -1,0 +1,108 @@
+---
+session: pockettts-coreml
+date: 2026-05-01
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: Shipped end-to-end PocketTTS CoreML port with iOS demo app — on-device RTF 0.09 on iPhone 17 Pro, speaker similarity 0.986 vs Python, SwiftUI demo with Generate/Stream/Play/Share.
+now: Nothing pending. Optional follow-ups are (a) make Stream accumulate generatedPCM so Play/Share enable after streaming, (b) licensing resolution for App Store (Kyutai CC-BY-NC-SA), (c) other languages.
+test: cd PocketTTSCoreML && swift test  # 9/9 pass ; POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/  # 34 pass
+
+done_this_session:
+  - task: Research + plan + premortem for the port
+    files:
+      - docs/research/external_research.md
+      - docs/research/reference_codebase_map.md
+      - thoughts/shared/plans/2026-05-01_pockettts_coreml_english_port.md
+  - task: Phase 1 scaffold + verification oracle (golden fixture via reference Python, seed 42 bitwise rerun test)
+    files:
+      - pockettts_coreml/oracle/dump_golden.py
+      - pockettts_coreml/oracle/compare.py
+      - tests/test_oracle_roundtrip.py
+      - pyproject.toml
+  - task: Phase 2+3 compressed — landmine patches + CoreML fp16 conversion for all 5 submodels
+    files:
+      - pockettts_coreml/patches/transformer_patched.py
+      - pockettts_coreml/patches/rope_patched.py
+      - pockettts_coreml/patches/mlp_patched.py
+      - pockettts_coreml/patches/flow_lm_patched.py
+      - pockettts_coreml/patches/mimi_patched.py
+      - pockettts_coreml/patches/mimi_model_patched.py
+      - pockettts_coreml/convert/convert_*.py
+      - pockettts_coreml/e2e/generator.py
+  - task: Added flow_lm_prefill.mlpackage so Swift can do text prefill natively (no Python helper required)
+    files:
+      - pockettts_coreml/convert/convert_flow_lm_prefill.py
+      - pockettts_coreml/e2e/export_full_prefill.py
+  - task: Phase 4A Swift Package PocketTTSCoreML (Mac RTF 0.087 warm, 0.096 cold)
+    files:
+      - PocketTTSCoreML/Package.swift
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/*.swift
+      - PocketTTSCoreML/Frameworks/SentencePiece.xcframework
+  - task: Phase 4B iOS benchmark app, measured iPhone 17 Pro A19 Pro RTF 0.09 warm cpu+NE, thermal .nominal, flow_lm_main 46.9% ANE residency
+    files:
+      - PocketTTSCoreML/Examples/iOSBenchmark/
+  - task: Pre-compiled .mlmodelc bundles for iOS ship path (halves .ipa size, no per-launch compile)
+    files:
+      - Artifacts/en_alba_fp16_mlmodelc/
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift  # resolveArtifact helper
+  - task: Phase 7 SwiftUI demo app with streaming TTS and full UI redesign
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/
+  - task: Speaker-similarity verification via Resemblyzer (0.986 cosine CoreML vs Python)
+    files: []
+
+blockers: []
+
+questions:
+  - App Store licensing — Kyutai weights are CC-BY-NC-SA; commercial distribution needs resolution before shipping. Deferred per user earlier in session.
+
+decisions:
+  - compressed_phase_2_3: User requested speed over process rigor, so per-stage parity tests were dropped in favor of end-to-end audio PSNR + speaker cosine. Tradeoff accepted.
+  - gated_weights_only: Using kyutai/pocket-tts (gated) throughout, not the ungated variant which disables voice cloning (tts_model.py:206,872). User supplied HF_TOKEN via CLI login.
+  - chunk_25_tokens_in_demo: Demo app overrides TextChunker default 50 -> 25 to stay inside fp16 AR stability window (~40 frames). Reference Python uses 50 at fp32 where drift isn't an issue.
+  - fresh_voice_handle_per_chunk: PocketTTS.generate mutates the handle's KV cache in place; a cached handle is single-use. Demo's voiceHandle() re-loads from disk each call. ~10ms cost, negligible vs gen time.
+  - mlmodelc_not_mlpackage_on_ios: iOS app bundles are read-only so runtime compile cache can't persist. Pre-compile on Mac via xcrun coremlcompiler and ship .mlmodelc. Halves .ipa size (713 MB -> 356 MB).
+  - sheet_picker_not_menu: Menu/Picker had hit-test flakiness inside the custom card layout with nearby gestures. Replaced with a .sheet-based full list. Reliable and better UX for 21 voices.
+
+findings:
+  - ane_residency_does_not_dominate_rtf: flow_lm_main at 46.9% ANE on A19 Pro runs at the same wall time as 0% ANE cpu-only mode. ANE dispatch overhead approximately cancels ANE compute speedup at this model size; A19 CPU is fast enough alone.
+  - fp16_amplitude_decay: After ~40 AR frames, fp16 compounding drift audibly drops volume. Mitigate by keeping chunks short (<= ~3s audio).
+  - kv_cache_256_limit: flowSCap=256 caps any single generate() call. Orchestrator now soft-caps with stderr warning instead of preconditon crash. Long text MUST be chunked at sentence boundaries by callers.
+  - mimi_decoder_cpu_fallback_expected_and_fine: SEANet stride 6/5/4 inverse + depthwise ConvTrUpsample1d are ANE-unsupported per research, run on CPU. At ~3ms/frame on Mac this is well under the 80ms budget.
+  - ct_state_type_dual_state_broken_on_ane: External research flagged dual-state MLState as ANE-broken. We used explicit KV I/O and pack all K+V into single rank-5 tensor as insurance.
+  - streaming_player_completion_race: AVAudioPlayerNode buffers scheduled back-to-back all complete with the same captured index; fix is a monotonic scheduledCount captured per-buffer. See StreamingPlayer.swift.
+
+worked:
+  - Compressing Phase 2+3 into a single kraken cycle using end-to-end audio PSNR as the gate instead of per-stage parity harness.
+  - Using a sibling .mlmodelc resolver (PocketTTS.resolveArtifact) so the same code path works on Mac dev (.mlpackage) and iOS ship (.mlmodelc).
+  - Adding debug print statements to diagnose the stream 1/3-stuck bug — pinned the issue to StreamingPlayer buffer-completion captured state in one iteration.
+  - Per-chunk fresh VoiceHandle pattern to work around KV-cache in-place mutation.
+  - Replacing Menu/Picker with a .sheet-based list for reliable selection in a complex card layout.
+
+failed:
+  - Initial kraken-built Menu-based voice picker (hit-test flaky inside card). Replaced with Picker(.menu), still flaky. Sheet-based list finally reliable.
+  - First StreamingPlayer implementation used captured currentChunk at schedule-time; all completion handlers wrote the same index, isPlaying never flipped to false, consumer loop waited forever.
+  - Cached voiceHandle in demo's TTSViewModel initially — chunks 2+ inherited poisoned KV from chunk 1, causing flowSCap overflow. Removed cache entirely.
+  - TextChunker default 50 tokens worked at reference Python fp32 but caused fp16 amplitude decay on device. Dropped to 25 in demo app.
+
+next:
+  - Optional: mirror streamed PCM into generatedPCM so Play/Share work after Stream completes. ~20 LOC in TTSViewModel.stream().
+  - Optional: Phase 6 palettization (6-bit) to shrink 356 MB artifacts to ~100 MB. Only worth it if ship size matters; perf headroom already comfortable.
+  - Blocking for App Store: resolve CC-BY-NC-SA licensing with Kyutai or scope distribution as non-commercial.
+  - When adding more languages: same conversion pipeline applies, but _24l variants are 4x flow_lm weight footprint and need re-validation. Per-language convert runs.
+
+files:
+  created:
+    - thoughts/shared/plans/2026-05-01_pockettts_coreml_english_port.md
+    - docs/research/external_research.md
+    - docs/research/reference_codebase_map.md
+    - docs/phase2_3_notes.md
+    - docs/mimi_state_layout.md
+    - pockettts_coreml/**  # whole Python package
+    - PocketTTSCoreML/**   # whole Swift package + 2 iOS example apps
+    - Artifacts/en_alba_fp16/*.mlpackage  # 6 bundles, 356 MB
+    - Artifacts/en_alba_fp16_mlmodelc/    # pre-compiled for iOS
+  modified:
+    - .gitignore  # excluded bundled artifacts, voices, xcuserdata, .mlmodelc
