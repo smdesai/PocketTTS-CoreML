@@ -59,7 +59,56 @@ public final class MLMultiArrayBox: @unchecked Sendable {
     public init(_ array: MLMultiArray) { self.array = array }
 }
 
+/// Speaker projection weights + optional bos_before_voice vector used by
+/// voice-cloning stage 2. Loaded once at `PocketTTS.init` from the sidecar
+/// `<artifacts>/speaker_proj.safetensors` and handed to `VoiceCloner`.
+public struct SpeakerProjection: Sendable {
+    /// Flattened fp32 `[d_model, ldim]` row-major weight matrix (typically
+    /// `[1024, 32]`).
+    public let weight: [Float]
+    /// Optional `[1, 1, d_model]` bos_before_voice prefix. Some language
+    /// configs set `insert_bos_before_voice: true` and expect this vector
+    /// to be prepended to the projected voice conditioning before the
+    /// flow_lm prefill pass.
+    public let bosBeforeVoice: [Float]?
+    public init(weight: [Float], bosBeforeVoice: [Float]?) {
+        self.weight = weight
+        self.bosBeforeVoice = bosBeforeVoice
+    }
+}
+
 public enum VoiceLoader {
+    /// Load `speaker_proj.safetensors` from the artifacts bundle. Returns
+    /// `nil` if the file isn't present (voice cloning unavailable for that
+    /// language bundle).
+    public static func loadSpeakerProjection(from url: URL) throws -> SpeakerProjection? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let reader = try SafetensorsReader(url: url)
+        guard let info = reader.tensors["speaker_proj"] else {
+            throw SafetensorsError.missingKey("speaker_proj")
+        }
+        // Expected shape: [d_model, ldim] = [1024, 32].
+        let expected = [PocketTTSArch.dModel, PocketTTSArch.latentDim]
+        guard info.shape == expected else {
+            throw SafetensorsError.shapeMismatch(expected: expected, actual: info.shape)
+        }
+        let (weight, _) = try reader.float32Array(for: "speaker_proj")
+
+        var bos: [Float]? = nil
+        if let bosInfo = reader.tensors["bos_before_voice"] {
+            // Expected shape [1, 1, d_model]; flatten to d_model.
+            guard bosInfo.elementCount == PocketTTSArch.dModel else {
+                throw SafetensorsError.shapeMismatch(
+                    expected: [1, 1, PocketTTSArch.dModel],
+                    actual: bosInfo.shape
+                )
+            }
+            let (b, _) = try reader.float32Array(for: "bos_before_voice")
+            bos = b
+        }
+        return SpeakerProjection(weight: weight, bosBeforeVoice: bos)
+    }
+
     /// Load a voice from `.safetensors`. Auto-detects prefilled vs voice-only
     /// by the presence of `flow_kv_rank5` (prefilled) vs the
     /// `transformer.layers.<i>.self_attn/cache` layout (voice-only).
@@ -229,12 +278,27 @@ public enum VoiceLoader {
         )
     }
 
-    /// Save a prefilled voice bundle in the format produced by
-    /// `export_full_prefill.py`.
+    /// Save a voice bundle to `.safetensors`. Supports both flavors:
+    ///
+    /// - `.prefilled`: writes `flow_kv_rank5` + `flow_offset` + `bos_emb`
+    ///   (and optional `prompt_utf8`) — same format as
+    ///   `export_full_prefill.py`.
+    /// - `.voiceOnly`: writes per-layer `transformer.layers.<i>.self_attn/cache`
+    ///   (shape `[2, 1, voiceOffset, H, D]`) + matching `/offset` —
+    ///   same format as the Kyutai HF voice files (e.g. `alba.safetensors`),
+    ///   so a cloned voice can be round-tripped through `loadVoice(url:)`
+    ///   and re-used across sessions without rerunning the mimi encoder.
     public static func save(_ handle: VoiceHandle, to url: URL) throws {
+        switch handle.kind {
+        case .voiceOnly(let kvBox, let voiceOffset, _):
+            try saveVoiceOnly(kv: kvBox.array, voiceOffset: voiceOffset, to: url)
+            return
+        case .prefilled:
+            break  // fall through to legacy path
+        }
         guard case let .prefilled(kvBox, offset, bosEmb, promptUTF8, _) = handle.kind else {
             throw NSError(domain: "VoiceLoader", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Only prefilled VoiceHandles are saveable in Phase 4A"
+                NSLocalizedDescriptionKey: "Unreachable"
             ])
         }
         let kvArr = kvBox.array
@@ -272,6 +336,66 @@ public enum VoiceLoader {
         ]
         if let p = promptUTF8 {
             tensors.append(.init(name: "prompt_utf8", shape: [p.count], dtype: .U8, data: p))
+        }
+        try SafetensorsWriter.write(tensors, to: url)
+    }
+
+    /// Write a `.voiceOnly` handle's KV cache in the per-layer Kyutai HF
+    /// voice-file layout. Slices first `voiceOffset` slots of each K/V row
+    /// out of the rank-5 buffer and stacks them into `[2, 1, voiceOffset,
+    /// H, D]` fp32 tensors named `transformer.layers.<i>.self_attn/cache`
+    /// (plus a matching `/offset` I64 scalar per layer). The resulting
+    /// file round-trips through `VoiceLoader.loadVoiceOnly(reader:)`.
+    static func saveVoiceOnly(kv: MLMultiArray, voiceOffset: Int, to url: URL) throws {
+        precondition(kv.dataType == .float16, "expected fp16 rank-5 KV buffer")
+        precondition(kv.count == 2 * PocketTTSArch.flowLayers * PocketTTSArch.flowSCap
+                     * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim)
+        let H = PocketTTSArch.flowHeads
+        let D = PocketTTSArch.flowHeadDim
+        let L = PocketTTSArch.flowLayers
+        let sCap = PocketTTSArch.flowSCap
+        let perSlot = H * D
+        let rowStride = sCap * perSlot
+        let srcPtr = kv.dataPointer.bindMemory(to: UInt16.self, capacity: kv.count)
+
+        var tensors: [SafetensorsWriter.Tensor] = []
+        tensors.reserveCapacity(2 * L)
+        // Scratch buffers reused per layer.
+        let perLayerF32Count = 2 * voiceOffset * perSlot  // [2, 1, voiceOffset, H, D]
+        var f32 = [Float](repeating: 0, count: perLayerF32Count)
+        var offsetI64: Int64 = Int64(voiceOffset)
+        let offData = withUnsafeBytes(of: &offsetI64) { Data($0) }
+
+        for layer in 0..<L {
+            let kBase = (2 * layer) * rowStride
+            let vBase = (2 * layer + 1) * rowStride
+            // Copy first voiceOffset slots of K then V into fp32 scratch.
+            // Layout [2, 1, voiceOffset, H, D]: K occupies [0..voiceOffset*H*D),
+            // V occupies [voiceOffset*H*D..2*voiceOffset*H*D).
+            f32.withUnsafeMutableBufferPointer { dst in
+                // K rows.
+                Float16Ops.convertFp16ToFp32(
+                    srcPtr: srcPtr.advanced(by: kBase),
+                    dstPtr: dst.baseAddress!,
+                    count: voiceOffset * perSlot
+                )
+                // V rows.
+                Float16Ops.convertFp16ToFp32(
+                    srcPtr: srcPtr.advanced(by: vBase),
+                    dstPtr: dst.baseAddress!.advanced(by: voiceOffset * perSlot),
+                    count: voiceOffset * perSlot
+                )
+            }
+            let cacheData = f32.withUnsafeBufferPointer { Data(buffer: $0) }
+            tensors.append(.init(
+                name: "transformer.layers.\(layer).self_attn/cache",
+                shape: [2, 1, voiceOffset, H, D],
+                dtype: .F32, data: cacheData
+            ))
+            tensors.append(.init(
+                name: "transformer.layers.\(layer).self_attn/offset",
+                shape: [1], dtype: .I64, data: offData
+            ))
         }
         try SafetensorsWriter.write(tensors, to: url)
     }

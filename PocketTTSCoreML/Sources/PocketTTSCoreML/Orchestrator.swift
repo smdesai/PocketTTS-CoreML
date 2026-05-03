@@ -32,12 +32,16 @@ public final class Orchestrator: @unchecked Sendable {
         /// didn't carry its own bos_emb (read from
         /// `Artifacts/.../flow_lm_bos_emb.safetensors`).
         public let defaultBosEmb: [Float]?
+        /// Optional — required only for voice cloning (stage 2). Loaded
+        /// from `Artifacts/.../speaker_proj.safetensors`.
+        public let speakerProjection: SpeakerProjection?
 
         public init(
             flowMain: MLModel, flowFlow: MLModel, mimiDecoder: MLModel,
             mimiLayout: MimiStateLayout,
             flowPrefill: MLModel? = nil, textConditioner: MLModel? = nil,
-            defaultBosEmb: [Float]? = nil
+            defaultBosEmb: [Float]? = nil,
+            speakerProjection: SpeakerProjection? = nil
         ) {
             self.flowMain = flowMain
             self.flowFlow = flowFlow
@@ -46,6 +50,7 @@ public final class Orchestrator: @unchecked Sendable {
             self.flowPrefill = flowPrefill
             self.textConditioner = textConditioner
             self.defaultBosEmb = defaultBosEmb
+            self.speakerProjection = speakerProjection
         }
     }
 
@@ -466,6 +471,129 @@ public final class Orchestrator: @unchecked Sendable {
                voiceKV.count * MemoryLayout<UInt16>.stride)
 
         return voiceOffset + sText
+    }
+
+    // ------------------------------------------------------------
+    // Voice prefill (stage 2 of voice cloning)
+    // ------------------------------------------------------------
+
+    /// Run flow_lm_prefill over a voice-derived conditioning tensor
+    /// (shape `[1, T_voice, d_model]`, already projected by
+    /// `VoiceProjection.applySpeakerProjection`) and write the resulting
+    /// voice KV into `voiceKV` at slots `[0, T_voice)`.
+    ///
+    /// Shares the `flow_lm_prefill.mlpackage` with text prefill — the
+    /// signature is identical (the bundle only sees "some conditioning of
+    /// shape `[1, S_text_pad, d_model]`"). We feed voice conditioning
+    /// where text conditioning would go; the scatter mask + attn mask
+    /// restrict writes to rows `[0, T_voice)`. `voiceKV` should be a
+    /// zero-filled rank-5 buffer (we don't preserve any prior state).
+    ///
+    /// Returns the new absolute KV offset (= `T_voice`).
+    public func runVoicePrefill(
+        voiceKV: MLMultiArray,
+        voiceConditioning: MLMultiArray
+    ) throws -> Int {
+        guard let prefill = models.flowPrefill else {
+            throw OrchestratorError.prefillModelMissing
+        }
+        guard voiceConditioning.shape.count == 3,
+              voiceConditioning.shape[0].intValue == 1,
+              voiceConditioning.shape[2].intValue == PocketTTSArch.dModel
+        else {
+            throw OrchestratorError.missingOutput(
+                "voice_conditioning shape \(voiceConditioning.shape) — expected [1, T, \(PocketTTSArch.dModel)]"
+            )
+        }
+        let sTextPad = PocketTTSArch.sTextPad
+        let tVoice = voiceConditioning.shape[1].intValue
+        guard tVoice > 0 && tVoice <= sTextPad else {
+            throw OrchestratorError.textTooLong(tVoice, max: sTextPad)
+        }
+        guard tVoice <= PocketTTSArch.flowSCap else {
+            throw OrchestratorError.prefillOverflow(
+                voiceOffset: 0, sText: tVoice, sCap: PocketTTSArch.flowSCap
+            )
+        }
+
+        // 1. Pad voiceConditioning to [1, sTextPad, d_model] with zeros.
+        //    The prefill bundle expects a fixed-width input; rows
+        //    [T_voice, sTextPad) are masked out by scatter_mask/attn_mask
+        //    so their actual values don't matter (we use zero for stability).
+        let embs = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), NSNumber(value: PocketTTSArch.dModel)],
+            dataType: .float16
+        )
+        let totalEmbs = sTextPad * PocketTTSArch.dModel
+        let embsDst = embs.dataPointer.bindMemory(to: UInt16.self, capacity: totalEmbs)
+        for i in 0..<totalEmbs { embsDst[i] = 0 }
+        let copyCount = tVoice * PocketTTSArch.dModel
+        let src = voiceConditioning.dataPointer.bindMemory(to: UInt16.self, capacity: copyCount)
+        memcpy(embsDst, src, copyCount * MemoryLayout<UInt16>.stride)
+
+        // 2. Build scatter/attn/RoPE for startOffset=0 (voice goes first).
+        let scatter = try Masks.scatterPrefillMaskFp16Padded(
+            startOffset: 0, sText: tVoice, sTextPad: sTextPad,
+            sCapacity: PocketTTSArch.flowSCap
+        )
+        let attn = try Masks.additiveAttentionMaskPrefillFp16Padded(
+            startOffset: 0, sText: tVoice, sTextPad: sTextPad,
+            sCapacity: PocketTTSArch.flowSCap
+        )
+        // RoPE table sliced at [0, sTextPad), fp16.
+        let rcFp32 = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float32
+        )
+        let rsFp32 = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float32
+        )
+        flowRope.fillRange(offset: 0, length: sTextPad, cosOut: rcFp32, sinOut: rsFp32)
+        let rc = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float16
+        )
+        let rs = try MLMultiArray(
+            shape: [1, NSNumber(value: sTextPad), 1,
+                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            dataType: .float16
+        )
+        let ropeCount = sTextPad * PocketTTSArch.flowHalfDim
+        Float16Ops.convertFp32ToFp16(
+            srcPtr: rcFp32.dataPointer.bindMemory(to: Float.self, capacity: ropeCount),
+            dstPtr: rc.dataPointer.bindMemory(to: UInt16.self, capacity: ropeCount),
+            count: ropeCount
+        )
+        Float16Ops.convertFp32ToFp16(
+            srcPtr: rsFp32.dataPointer.bindMemory(to: Float.self, capacity: ropeCount),
+            dstPtr: rs.dataPointer.bindMemory(to: UInt16.self, capacity: ropeCount),
+            count: ropeCount
+        )
+
+        // 3. Run flow_lm_prefill with voiceKV (zero-filled) as kv_cache_in.
+        let prefillFeatures: [String: MLFeatureValue] = [
+            "text_embeddings": MLFeatureValue(multiArray: embs),
+            "kv_cache_in":     MLFeatureValue(multiArray: voiceKV),
+            "scatter_mask":    MLFeatureValue(multiArray: scatter),
+            "attn_mask":       MLFeatureValue(multiArray: attn),
+            "rope_cos":        MLFeatureValue(multiArray: rc),
+            "rope_sin":        MLFeatureValue(multiArray: rs),
+        ]
+        let provider = try MLDictionaryFeatureProvider(dictionary: prefillFeatures)
+        let out = try prefill_predict_autorelease(model: prefill, provider: provider)
+        guard let kvOut = out.featureValue(for: "kv_cache_out")?.multiArrayValue else {
+            throw OrchestratorError.missingOutput("flow_lm_prefill (voice)")
+        }
+        // 4. Copy back into the caller-owned voiceKV (both fp16).
+        precondition(kvOut.count == voiceKV.count)
+        memcpy(voiceKV.dataPointer, kvOut.dataPointer,
+               voiceKV.count * MemoryLayout<UInt16>.stride)
+
+        return tVoice
     }
 
     @inline(__always)

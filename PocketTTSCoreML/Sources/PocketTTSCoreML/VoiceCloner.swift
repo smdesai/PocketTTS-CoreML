@@ -3,24 +3,36 @@ import CoreML
 import AVFoundation
 import Accelerate
 
-/// Runs `mimi_encoder.mlpackage` over a reference waveform to produce Mimi
-/// latents, the first half of the two-stage voice-cloning pipeline.
+/// Two-stage voice cloning pipeline driven entirely in Swift.
 ///
-/// Phase 4A limitation: the SECOND stage (flow_lm_main prefill over those
-/// latents to produce the voice KV cache) is not runnable in Swift because
-/// the exported `flow_lm_main.mlpackage` is AR-only — see
-/// `Orchestrator.swift` for the background. `cloneVoice` therefore writes
-/// the latents + wave bytes to a temporary safetensors and returns a
-/// voice-only handle. Users can feed that handle to
-/// `pockettts_coreml.e2e.export_full_prefill` to complete the clone.
+/// Stage 1: `mimi_encoder.mlpackage` runs on a 4-second reference waveform
+/// (resampled/padded/cropped to exactly 96 000 samples @ 24 kHz) to produce
+/// Mimi latents of shape `fp16[1, 32, T_latent]` (T_latent = 50 for 4 s).
 ///
-/// Phase 4B will either:
-///   - add a `flow_lm_prefill.mlpackage`, or
-///   - port the 6-layer transformer to Swift MLMultiArray ops.
+/// Stage 2: latents are projected to `d_model` (1024) via the learned
+/// `speaker_proj_weight` linear (loaded from `speaker_proj.safetensors`),
+/// optionally prepended with the `bos_before_voice` vector, and fed to
+/// `flow_lm_prefill.mlpackage` to populate the voice KV cache at slots
+/// `[0, T_voice)`. The returned `VoiceHandle.voiceOnly` can then be passed
+/// directly to `PocketTTS.generate(...)`.
+///
+/// This mirrors the reference Python pipeline — see `TTSModel._encode_audio`
+/// + `TTSModel.get_state_for_audio_prompt` in
+/// `pockettts_coreml/reference/pocket_tts/models/tts_model.py`.
 public final class VoiceCloner: @unchecked Sendable {
     public let encoder: MLModel
+    public let orchestrator: Orchestrator
+    public let speakerProj: SpeakerProjection
 
-    public init(mimiEncoderURL: URL, computeUnits: MLComputeUnits) async throws {
+    public init(
+        mimiEncoderURL: URL,
+        orchestrator: Orchestrator,
+        speakerProjection: SpeakerProjection,
+        computeUnits: MLComputeUnits
+    ) async throws {
+        self.orchestrator = orchestrator
+        self.speakerProj = speakerProjection
+
         let cfg = MLModelConfiguration()
         cfg.computeUnits = computeUnits
         let cached = mimiEncoderURL.deletingPathExtension().appendingPathExtension("mlmodelc")
@@ -39,75 +51,66 @@ public final class VoiceCloner: @unchecked Sendable {
         }
     }
 
-    /// Run mimi_encoder on a 24 kHz mono waveform. Input audio is resampled /
-    /// padded / cropped to exactly 96 000 samples (4 seconds) as the
-    /// converted encoder is static-shape.
+    /// Run the full two-stage clone on a reference waveform and return a
+    /// `.voiceOnly` VoiceHandle with the voice KV populated.
     public func clone(from audioURL: URL) async throws -> VoiceHandle {
+        // --- Stage 1: mimi_encoder on exactly 4 s of audio -------------------
         let samples = try Self.loadMonoFloat32_24k(from: audioURL)
-        // Pad or crop to 96 000 samples.
         let target = 96_000
         var buffer = [Float](repeating: 0, count: target)
         let copy = min(samples.count, target)
         for i in 0..<copy { buffer[i] = samples[i] }
 
-        // mimi_encoder is fp16.
-        let waveform = try MLMultiArray(shape: [1, 1, NSNumber(value: target)], dataType: .float16)
+        let waveform = try MLMultiArray(
+            shape: [1, 1, NSNumber(value: target)], dataType: .float16
+        )
         let dstPtr = waveform.dataPointer.bindMemory(to: UInt16.self, capacity: target)
         buffer.withUnsafeBufferPointer { src in
             Float16Ops.convertFp32ToFp16(srcPtr: src.baseAddress!, dstPtr: dstPtr, count: target)
         }
-
         let provider = try MLDictionaryFeatureProvider(dictionary: [
             "waveform": MLFeatureValue(multiArray: waveform)
         ])
         let result = try autoreleasepool { try encoder.prediction(from: provider) }
-        guard let latentsMA = result.featureValue(for: "latents")?.multiArrayValue else {
+        guard let latents = result.featureValue(for: "latents")?.multiArrayValue else {
             throw NSError(domain: "VoiceCloner", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "mimi_encoder returned no latents"
             ])
         }
+        // --- Stage 2a: apply speaker projection ----------------------------
+        let (projected, _) = try VoiceProjection.applySpeakerProjection(
+            latents: latents, proj: speakerProj.weight
+        )
+        let (conditioning, tVoice) = try VoiceProjection.prependBosBeforeVoice(
+            conditioning: projected, bosBeforeVoice: speakerProj.bosBeforeVoice
+        )
 
-        // Clone output carries the Mimi latents for downstream packing.
-        // `cloneVoice` is a two-stage pipeline — mimi_encoder here, then
-        // a flow_lm pass over the latents (via the reference Python
-        // helper or a future Swift port) to produce the final voice KV.
-        // Until that second stage is written, we return a zero-filled
-        // voice-only handle and expose the latents via the bundled URL
-        // metadata so the CLI can save them for an offline prefill.
-        let n = latentsMA.count
-        var floats = [Float](repeating: 0, count: n)
-        let srcPtr = latentsMA.dataPointer.bindMemory(to: UInt16.self, capacity: n)
-        floats.withUnsafeMutableBufferPointer { dst in
-            Float16Ops.convertFp16ToFp32(srcPtr: srcPtr, dstPtr: dst.baseAddress!, count: n)
-        }
-        self.lastLatents = floats  // for CLI save-after-clone
-
-        // Zero-filled KV; voice_offset=0 is the signal that this handle
-        // isn't directly playable — the CLI catches this before calling
-        // `generate`.
-        let shape: [NSNumber] = [
+        // --- Stage 2b: allocate zero-filled KV, run flow_lm_prefill --------
+        let kvShape: [NSNumber] = [
             NSNumber(value: 2 * PocketTTSArch.flowLayers), 1,
             NSNumber(value: PocketTTSArch.flowSCap),
             NSNumber(value: PocketTTSArch.flowHeads),
             NSNumber(value: PocketTTSArch.flowHeadDim),
         ]
-        let placeholderKV = try MLMultiArray(shape: shape, dataType: .float16)
-        let total = placeholderKV.count
-        let dst = placeholderKV.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        for i in 0..<total { dst[i] = 0 }
+        let voiceKV = try MLMultiArray(shape: kvShape, dataType: .float16)
+        let total = voiceKV.count
+        let kvPtr = voiceKV.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+        for i in 0..<total { kvPtr[i] = 0 }
+
+        let voiceOffset = try orchestrator.runVoicePrefill(
+            voiceKV: voiceKV, voiceConditioning: conditioning
+        )
+        precondition(voiceOffset == tVoice)
+
         return VoiceHandle(
             kind: .voiceOnly(
-                flowKVRank5: MLMultiArrayBox(placeholderKV),
-                voiceOffset: 0,
-                bosEmb: nil
+                flowKVRank5: MLMultiArrayBox(voiceKV),
+                voiceOffset: voiceOffset,
+                bosEmb: nil  // orchestrator falls back to the default sidecar
             ),
             sourceURL: audioURL
         )
     }
-
-    /// Latents from the last clone(...) call. Exposed for the CLI's
-    /// intermediate-bundle save path.
-    public private(set) var lastLatents: [Float]? = nil
 
     // MARK: - Audio loading
 

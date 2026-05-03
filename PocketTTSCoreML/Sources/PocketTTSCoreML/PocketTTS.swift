@@ -100,11 +100,17 @@ public actor PocketTTS {
             defaultBos = bos
         }
 
+        // Optional speaker_proj sidecar — required for voice cloning
+        // (stage 2). If missing, `cloneVoice` throws but other paths work.
+        let projURL = artifactsBundle.appendingPathComponent("speaker_proj.safetensors")
+        let speakerProj: SpeakerProjection? = try VoiceLoader.loadSpeakerProjection(from: projURL)
+
         self.orchestrator = Orchestrator(models: .init(
             flowMain: flowMain, flowFlow: flowFlow,
             mimiDecoder: mimiDec, mimiLayout: layout,
             flowPrefill: flowPrefill, textConditioner: textCond,
-            defaultBosEmb: defaultBos
+            defaultBosEmb: defaultBos,
+            speakerProjection: speakerProj
         ))
     }
 
@@ -157,26 +163,33 @@ public actor PocketTTS {
         try VoiceLoader.save(handle, to: url)
     }
 
-    /// Cloning runs `mimi_encoder.mlpackage` on the supplied waveform to
-    /// produce per-voice Mimi latents. The remaining step (flow_lm pass
-    /// over those latents to produce the voice KV cache) is not yet
-    /// implemented in Swift — the CLI stashes the latents to disk for an
-    /// offline prefill. Once that second stage is ported, this method
-    /// will return a `.voiceOnly` handle that can be fed directly to
-    /// `generate(...)`.
-    private var _lastCloner: VoiceCloner?
-
+    /// Run the full two-stage voice cloning pipeline (mimi_encoder →
+    /// speaker projection → flow_lm_prefill) on a reference waveform.
+    /// Returns a `.voiceOnly` handle that can be passed directly to
+    /// `generate(...)` without any Python helper.
+    ///
+    /// Requires the artifacts bundle to contain:
+    ///   - `mimi_encoder.mlpackage` (or compiled `.mlmodelc`)
+    ///   - `flow_lm_prefill.mlpackage`
+    ///   - `speaker_proj.safetensors`  (see `export_speaker_proj.py`)
     public func cloneVoice(from audioURL: URL) async throws -> VoiceHandle {
+        guard let speakerProj = orchestrator.models.speakerProjection else {
+            throw PocketTTSLoadError.modelNotFound(
+                "speaker_proj.safetensors not found in \(artifactsBundle.path); "
+                + "voice cloning unavailable for this bundle. Regenerate via "
+                + "`python -m pockettts_coreml.convert.export_speaker_proj "
+                + "--language <lang> --out <artifacts_dir>`"
+            )
+        }
+        let encoderURL = artifactsBundle.appendingPathComponent("mimi_encoder.mlpackage")
         let cloner = try await VoiceCloner(
-            mimiEncoderURL: artifactsBundle.appendingPathComponent("mimi_encoder.mlpackage"),
+            mimiEncoderURL: encoderURL,
+            orchestrator: orchestrator,
+            speakerProjection: speakerProj,
             computeUnits: computeUnits
         )
-        let handle = try await cloner.clone(from: audioURL)
-        self._lastCloner = cloner
-        return handle
+        return try await cloner.clone(from: audioURL)
     }
-
-    public func lastCloneLatents() -> [Float]? { _lastCloner?.lastLatents }
 
     /// Encode text to SentencePiece ids (exposed for tests / parity checks).
     public nonisolated func tokenize(_ text: String) -> [Int32] {
