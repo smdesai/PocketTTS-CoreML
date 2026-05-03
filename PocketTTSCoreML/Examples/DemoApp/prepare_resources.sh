@@ -21,7 +21,9 @@
 #           └── tokenizer.model
 #
 # Run from DemoApp/ (this directory). Total payload scales linearly with
-# language count (~490 MB per language: 356 MB artifacts + ~130 MB voices).
+# language count (~490 MB per 6-layer language: 356 MB artifacts + ~130 MB
+# voices). French is the only 24-layer language currently shipped and
+# adds ~1.55 GB on its own (~1.05 GB artifacts + ~500 MB voices).
 
 set -euo pipefail
 
@@ -49,6 +51,7 @@ LANG_SPECS=(
     "de|$REPO/Artifacts/de_fp16_mlmodelc|$REPO/voices_german|$REPO/voices_german/tokenizer.model"
     "it|$REPO/Artifacts/it_fp16_mlmodelc|$REPO/voices_italian|$REPO/voices_italian/tokenizer.model"
     "pt|$REPO/Artifacts/pt_fp16_mlmodelc|$REPO/voices_portuguese|$REPO/voices_portuguese/tokenizer.model"
+    "fr|$REPO/Artifacts/fr_fp16_mlmodelc|$REPO/voices_french|$REPO/voices_french/tokenizer.model"
 )
 
 # ------------------------------------------------------------------

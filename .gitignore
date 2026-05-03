@@ -56,6 +56,7 @@ voices_spanish/
 voices_german/
 voices_italian/
 voices_portuguese/
+voices_french/
 
 # Pre-compiled CoreML artifacts (regenerate with xcrun coremlcompiler)
 Artifacts/en_alba_fp16_mlmodelc/
@@ -67,6 +68,8 @@ Artifacts/it_fp16/
 Artifacts/it_fp16_mlmodelc/
 Artifacts/pt_fp16/
 Artifacts/pt_fp16_mlmodelc/
+Artifacts/fr_fp16/
+Artifacts/fr_fp16_mlmodelc/
 
 # Per-language DemoApp Resources (physical copies made by prepare_resources.sh)
 PocketTTSCoreML/Examples/**/Resources/Languages/
