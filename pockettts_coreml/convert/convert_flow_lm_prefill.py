@@ -188,7 +188,11 @@ def _export_bos_sidecar(bos_emb: torch.Tensor, out_path: Path) -> None:
                 out_path, int(bos.numel()))
 
 
-def convert(save_path: Path, language: str = "english") -> None:
+def convert(
+    save_path: Path,
+    language: str = "english",
+    palettize_bits: int | None = None,
+) -> None:
     # Selective fp32 softmax: default ON. See convert_flow_lm_main.py for
     # rationale and `docs/investigations/fp16_drift_localization.md` for
     # the drift measurement. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
@@ -250,6 +254,35 @@ def convert(save_path: Path, language: str = "english") -> None:
         name="flow_lm_prefill", precision=precision,
     )
 
+    if palettize_bits is not None:
+        # See convert_flow_lm_main.py for rationale on ordering
+        # (palettize AFTER fp32-softmax pass) and on the
+        # per_grouped_channel + group_size=16 choice.
+        from coremltools.optimize.coreml import (
+            OpPalettizerConfig,
+            OptimizationConfig,
+            palettize_weights,
+        )
+        LOGGER.info(
+            "flow_lm_prefill: applying %d-bit k-means palettization (per_grouped_channel, group_size=16) ...",
+            palettize_bits,
+        )
+        import time as _time
+        _t0 = _time.time()
+        op_config = OpPalettizerConfig(
+            mode="kmeans",
+            nbits=palettize_bits,
+            granularity="per_grouped_channel",
+            group_size=16,
+        )
+        opt_config = OptimizationConfig(global_config=op_config)
+        mlmodel = palettize_weights(mlmodel, opt_config)
+        LOGGER.info(
+            "flow_lm_prefill: palettization done in %.1fs; re-saving to %s",
+            _time.time() - _t0, save_path,
+        )
+        mlmodel.save(str(save_path))
+
     # ------------------------------------------------------------------
     # Spot-check: predict against eager output. At fp16 the per-element
     # diff on a 6-layer 1024-d transformer over 128 tokens can be large
@@ -282,12 +315,27 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_flow_lm_prefill")
     p.add_argument("--save-path", type=Path,
                    default=ARTIFACTS_DIR / "flow_lm_prefill.mlpackage")
+    p.add_argument(
+        "--out", type=Path, default=None,
+        help="Alias for --save-path (takes precedence if both are given).",
+    )
     p.add_argument("--language", default="english",
                    help="Reference language config (english/spanish/...).")
+    p.add_argument(
+        "--palettize-bits", type=int, default=None,
+        help="If set, apply k-means weight palettization at N bits "
+             "(typical: 6 or 8) after the fp32-softmax MIL pass. "
+             "Default: no palettization (preserves fp16 behavior).",
+    )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path, language=args.language)
+    save_path = args.out if args.out is not None else args.save_path
+    convert(
+        save_path,
+        language=args.language,
+        palettize_bits=args.palettize_bits,
+    )
     return 0
 
 

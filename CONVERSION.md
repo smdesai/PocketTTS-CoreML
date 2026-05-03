@@ -145,6 +145,33 @@ Expect:
 - Python-side verify per forward ~30 s (vs ~3 s for 6L on Mac).
 - Swift/ANE device RTFx drops proportionally; measure on device.
 
+**6-bit palettization for French (ANE fit).** The 24L `flow_lm_main` /
+`flow_lm_prefill` exceed the Mac ANE compile budget at fp16 (
+`ANECCompile() FAILED`, CPU fallback at 33 ms/step). Both
+converters accept `--palettize-bits N` (typical: 6 or 8) which runs
+`coremltools.optimize.coreml.palettize_weights` (k-means,
+`per_grouped_channel`, `group_size=16`) immediately after the
+fp32-softmax MIL pass — palettization touches weight storage while
+the compute-precision pass touches activation dtypes, so the two are
+orthogonal. 6-bit cuts `flow_lm_main.mlpackage` 577 MB → ~220 MB and
+`flow_lm_prefill.mlpackage` 559 MB → ~210 MB (2.6× reduction); the
+palettization step adds ~5-10 min per model on top of the base
+convert wall time. Example:
+
+```bash
+.venv/bin/python -m pockettts_coreml.convert.convert_flow_lm_main \
+    --language french_24l --palettize-bits 6 \
+    --out Artifacts/fr_fp16_palette6/flow_lm_main.mlpackage
+
+.venv/bin/python -m pockettts_coreml.convert.convert_flow_lm_prefill \
+    --language french_24l --palettize-bits 6 \
+    --out Artifacts/fr_fp16_palette6/flow_lm_prefill.mlpackage
+```
+
+The 6L languages (English, Spanish, German, Italian, Portuguese) fit
+ANE fine as plain fp16 — do NOT palettize them unless you need the
+footprint win, since palettization costs ~2-3 dB of PSNR.
+
 **Swift runtime layer resolution:** `PocketTTSArch.flowLayers` in
 `PocketTTSCoreML/Sources/PocketTTSCoreML/KVCacheBuffers.swift` is
 `nonisolated(unsafe) var` (defaults to 6). `PocketTTS.init` calls

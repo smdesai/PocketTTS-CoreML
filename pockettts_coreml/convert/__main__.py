@@ -36,8 +36,21 @@ _YELLOW = ("mimi_encoder", "mimi_decoder")
 _ALL = _GREEN + _YELLOW
 
 
-def _run_one(name: str, include_yellow: bool, out_dir: Path, language: str) -> tuple[bool, str]:
-    """Invoke a specific convert script. Returns (ok, message)."""
+def _run_one(
+    name: str,
+    include_yellow: bool,
+    out_dir: Path,
+    language: str,
+    palettize_bits: int | None = None,
+) -> tuple[bool, str]:
+    """Invoke a specific convert script. Returns (ok, message).
+
+    `palettize_bits` is only honored by the flow_lm_main / flow_lm_prefill
+    converters (weight palettization targets the 24L French transformer).
+    Other submodels silently ignore the flag: palettizing text_conditioner
+    or mimi_* has no measured benefit for the ANE-compile-time problem
+    (only the 24L transformer bundles are too large for the ANE).
+    """
     t0 = time.time()
     try:
         if name == "text_conditioner":
@@ -45,10 +58,18 @@ def _run_one(name: str, include_yellow: bool, out_dir: Path, language: str) -> t
             convert(out_dir / "text_conditioner.mlpackage", language=language)
         elif name == "flow_lm_main":
             from pockettts_coreml.convert.convert_flow_lm_main import convert
-            convert(out_dir / "flow_lm_main.mlpackage", language=language)
+            convert(
+                out_dir / "flow_lm_main.mlpackage",
+                language=language,
+                palettize_bits=palettize_bits,
+            )
         elif name == "flow_lm_prefill":
             from pockettts_coreml.convert.convert_flow_lm_prefill import convert
-            convert(out_dir / "flow_lm_prefill.mlpackage", language=language)
+            convert(
+                out_dir / "flow_lm_prefill.mlpackage",
+                language=language,
+                palettize_bits=palettize_bits,
+            )
         elif name == "flow_lm_flow":
             from pockettts_coreml.convert.convert_flow_lm_flow import convert
             convert(out_dir / "flow_lm_flow.mlpackage", language=language)
@@ -95,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
              "`Artifacts/en_alba_fp16/` (for backwards compat with the "
              "English bundle).",
     )
+    p.add_argument(
+        "--palettize-bits", type=int, default=None,
+        help="If set, apply k-means weight palettization at N bits "
+             "(typical: 6 or 8) to flow_lm_main and flow_lm_prefill "
+             "after the fp32-softmax MIL pass. Other submodels ignore "
+             "the flag. Default: no palettization (preserves fp16).",
+    )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
@@ -110,7 +138,10 @@ def main(argv: list[str] | None = None) -> int:
     if not out_dir.is_absolute():
         out_dir = (_REPO_ROOT / out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    LOGGER.info("Output directory: %s (language=%s)", out_dir, args.language)
+    LOGGER.info(
+        "Output directory: %s (language=%s, palettize_bits=%s)",
+        out_dir, args.language, args.palettize_bits,
+    )
 
     results: list[tuple[str, bool, str]] = []
     for name in targets:
@@ -118,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         ok, msg = _run_one(
             name, include_yellow=args.include_yellow,
             out_dir=out_dir, language=args.language,
+            palettize_bits=args.palettize_bits,
         )
         results.append((name, ok, msg))
         LOGGER.info("=== %s: %s ===", name, msg)

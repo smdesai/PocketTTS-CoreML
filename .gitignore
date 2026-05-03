@@ -70,6 +70,10 @@ Artifacts/pt_fp16/
 Artifacts/pt_fp16_mlmodelc/
 Artifacts/fr_fp16/
 Artifacts/fr_fp16_mlmodelc/
+Artifacts/fr_fp16_palette6/
+Artifacts/fr_fp16_palette6_mlmodelc/
+Artifacts/fr_fp16_palette8/
+Artifacts/fr_fp16_palette8_mlmodelc/
 
 # Per-language DemoApp Resources (physical copies made by prepare_resources.sh)
 PocketTTSCoreML/Examples/**/Resources/Languages/

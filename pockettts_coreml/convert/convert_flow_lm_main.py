@@ -98,7 +98,12 @@ class _FlowLMMainARWrap(nn.Module):
         return ctx, eos_logit, kv_cache_out
 
 
-def convert(save_path: Path, spot_offset: int = 3, language: str = "english") -> None:
+def convert(
+    save_path: Path,
+    spot_offset: int = 3,
+    language: str = "english",
+    palettize_bits: int | None = None,
+) -> None:
     # Selective fp32 softmax: default ON. Emits cast-up/softmax/cast-down
     # around the attention reduction so CoreML keeps the softmax at fp32
     # while weights stay fp16. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
@@ -189,6 +194,46 @@ def convert(save_path: Path, spot_offset: int = 3, language: str = "english") ->
         precision=precision,
     )
 
+    if palettize_bits is not None:
+        # Apply weight palettization AFTER the fp32-softmax MIL pass so the
+        # compute-precision graph rewrites (keeping softmax/layer_norm at
+        # fp32) are not perturbed. Palettization operates on weight storage
+        # (k-means clusters indexed by lookup) while the compute-precision
+        # pass operates on activation dtypes — they're orthogonal. Applying
+        # palettize_weights AFTER convert_and_save means the saved bundle
+        # already has the fp32-softmax casts materialized; palettize then
+        # walks `const` ops with weight tensors and replaces them with
+        # lookup-table + indices representations.
+        #
+        # `per_grouped_channel` with group_size=16 is the ANE-safe granularity
+        # (external research: per-tensor loses too much quality on attention
+        # projections; per_grouped_channel w/ group=16 is the standard knob
+        # used in CoreML-LLM and MLX conversions for 6-8 bit palettization).
+        from coremltools.optimize.coreml import (
+            OpPalettizerConfig,
+            OptimizationConfig,
+            palettize_weights,
+        )
+        LOGGER.info(
+            "flow_lm_main: applying %d-bit k-means palettization (per_grouped_channel, group_size=16) ...",
+            palettize_bits,
+        )
+        import time as _time
+        _t0 = _time.time()
+        op_config = OpPalettizerConfig(
+            mode="kmeans",
+            nbits=palettize_bits,
+            granularity="per_grouped_channel",
+            group_size=16,
+        )
+        opt_config = OptimizationConfig(global_config=op_config)
+        mlmodel = palettize_weights(mlmodel, opt_config)
+        LOGGER.info(
+            "flow_lm_main: palettization done in %.1fs; re-saving to %s",
+            _time.time() - _t0, save_path,
+        )
+        mlmodel.save(str(save_path))
+
     # fp16 spot-check at the same sample inputs.
     import numpy as np
     with torch.no_grad():
@@ -226,12 +271,27 @@ def convert(save_path: Path, spot_offset: int = 3, language: str = "english") ->
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_flow_lm_main")
     p.add_argument("--save-path", type=Path, default=ARTIFACTS_DIR / "flow_lm_main.mlpackage")
+    p.add_argument(
+        "--out", type=Path, default=None,
+        help="Alias for --save-path (takes precedence if both are given).",
+    )
     p.add_argument("--language", default="english",
                    help="Reference language config (english/spanish/...).")
+    p.add_argument(
+        "--palettize-bits", type=int, default=None,
+        help="If set, apply k-means weight palettization at N bits "
+             "(typical: 6 or 8) after the fp32-softmax MIL pass. "
+             "Default: no palettization (preserves fp16 behavior).",
+    )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path, language=args.language)
+    save_path = args.out if args.out is not None else args.save_path
+    convert(
+        save_path,
+        language=args.language,
+        palettize_bits=args.palettize_bits,
+    )
     return 0
 
 
