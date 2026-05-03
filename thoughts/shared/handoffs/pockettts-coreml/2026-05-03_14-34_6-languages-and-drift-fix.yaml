@@ -1,0 +1,113 @@
+---
+session: pockettts-coreml
+date: 2026-05-03
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: "Shipped 6-language PocketTTS CoreML port (en/es/de/it/pt/fr), closed fp16 AR amplitude-decay drift via selective fp32 softmax+LayerNorm MIL pass, documented the whole port in CONVERSION.md. 34 Python tests + 9 Swift tests pass; all 6 languages validate via verify_<lang>.py sanity scripts."
+now: "Natural stopping point. No blockers. Optional follow-ups -- Stream -> Play/Share polish (~20 LOC), background prewarm French at app launch to hide 11s compile, chunk token limit retune (25 -> 40+ now that drift is fixed), voice cloning from user .wav stage 2."
+test: "POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/  then  cd PocketTTSCoreML && swift test  then  .venv/bin/python -m pockettts_coreml.oracle.verify_<lang>"
+
+done_this_session:
+  - task: Fixed fp16 AR amplitude drift via selective fp32 softmax+LayerNorm
+    files:
+      - pockettts_coreml/convert/convert_flow_lm_main.py
+      - pockettts_coreml/convert/convert_flow_lm_prefill.py
+      - pockettts_coreml/patches/transformer_patched.py
+      - pockettts_coreml/patches/flow_lm_patched.py
+      - docs/investigations/fp16_drift_localization.md
+  - task: SwiftUI demo app UI redesign per user mockup + live stats + share
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/ContentView.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/TTSViewModel.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/StreamingPlayer.swift
+  - task: Multi-language support en/es plumbed end-to-end (converter flag, demo UI)
+    files:
+      - pockettts_coreml/convert/__main__.py
+      - pockettts_coreml/convert/convert_*.py
+      - pockettts_coreml/e2e/generator.py
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/VoiceCatalog.swift
+      - PocketTTSCoreML/Examples/DemoApp/prepare_resources.sh
+  - task: Added German + Italian + Portuguese (all 12L, same arch as English)
+    files:
+      - pockettts_coreml/oracle/verify_german.py
+      - pockettts_coreml/oracle/verify_italian.py
+      - pockettts_coreml/oracle/verify_portuguese.py
+  - task: Added French (24L, only variant Kyutai ships) with runtime layer-count resolution
+    files:
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/KVCacheBuffers.swift
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift
+      - pockettts_coreml/oracle/verify_french.py
+  - task: Comprehensive CONVERSION.md port guide (628 lines)
+    files:
+      - CONVERSION.md
+  - task: Palettization experiment (6-bit) for French - landed flag + code, reverted live bundle
+    files:
+      - pockettts_coreml/convert/convert_flow_lm_main.py
+      - pockettts_coreml/convert/convert_flow_lm_prefill.py
+
+blockers: []
+
+questions:
+  - Licensing for App Store - Kyutai weights are CC-BY-NC-SA; commercial distribution needs separate terms. Unresolved, flagged in CONVERSION.md §9.1.
+
+decisions:
+  - fp32_softmax_and_ln_not_just_softmax: Initial drift-fix attempt pinned only softmax to fp32 (recovered ~50% of drift). Adding LayerNorm to the fp32 op set closed the remaining gap. Cost was ~25% RTFx drop (10x -> 7.44x realtime on A19 Pro) but audio quality gain is significant and imperceptible RTFx still.
+  - post_conversion_mil_pass_not_pytorch_cast: Tried inline PyTorch `scores.float()` cast first - coremltools optimizer fused it away. The post-conversion MIL pass with `FP16ComputePrecision + op_selector` is the only reliable way to pin specific ops to fp32 while keeping weights fp16.
+  - ship_fp16_not_palettized: Tested 6-bit palettization on French 24L to reduce 11s iPhone compile cost. Palettization reduced artifact size 2.7x but did NOT reduce compile time or memory pressure (compile still ballooned 167MB -> 1.45GB on device). Reverted to fp16.
+  - runtime_layer_resolution: PocketTTSArch.flowLayers is `nonisolated(unsafe) var` set once at PocketTTS.init by reading flow_lm_main input shape. Single-writer-before-reads ordering makes the unsafe mutation safe. 6L variants land at 6, French 24L lands at 24, same Swift code path for both.
+  - fresh_voice_handle_per_chunk: PocketTTS.generate mutates the handle's KV cache in place. Demo app TTSViewModel reloads VoiceLoader from disk per chunk rather than caching. ~10ms parse cost is negligible vs generation.
+  - 25_token_chunks_in_demo: Conservative vs TextChunker default of 50, left at 25 even after drift fix. With drift fix in place, 40-50 should work; deferred as optional follow-up.
+  - sheet_picker_not_menu_for_voice_and_language: Menu/Picker had hit-test flakiness inside custom cards. Replaced with sheet-based List view. Reliable and better UX for 21+ voices.
+
+findings:
+  - french_24l_compile_cost_is_graph_not_weight: iPhone 17 Pro takes 11s to compile French flow_lm_main (24L), vs ~1s for 6L languages. Palettization doesn't help because it reduces storage not compile complexity. 2987 ops across 24 layers is the actual cost driver. UX-side mitigation (lazy load, background prewarm) is the right direction when we revisit.
+  - french_drift_is_actually_lowest: Counter-intuitive result from verify_french.py - 24L French has the LOWEST per-frame amplitude-drift slope (+0.01%/frame vs +0.5% for some 6L). The deeper LayerNorm chain actually stabilizes fp16 accumulation once softmax+LN are pinned to fp32.
+  - portuguese_has_highest_residual_drift: +1.77%/frame vs ~0.3% for other 6L languages. Still passes gates but flag for long-form Portuguese use cases.
+  - anemll_profile_dispatch_is_misleading_for_on_device: Mac `-a` profile showed flow_lm_main at 97.9% GPU. Mac ANE rejects the 24L graph entirely (ANECCompile FAILED under `-c`). iPhone A19 Pro ANE is larger and DOES compile successfully, but slowly (11s). Mac ANE behavior does not predict iPhone ANE behavior.
+  - streaming_player_completion_race: AVAudioPlayerNode scheduleBuffer completion handlers captured currentChunk at schedule time (all back-to-back, same value). Fix was to capture per-buffer finishIndex = ++scheduledCount in the closure. See StreamingPlayer.swift.
+  - tokenizer_must_match_weights_at_runtime: CoreMLGenerator defaulted to language="english" and loaded Spanish mlpackages with English tokenizer -> byte-fallback garbage tokens -> spurious EOS at step 2. Pass language explicitly. iOS app threads this correctly via per-language Resources layout.
+
+worked:
+  - Per-submodel fp32 swap experiment (docs/investigations/fp16_drift_localization.md) as a localization tool - pinpointed drift to flow_lm_main in ~1 hour.
+  - coremltools FP16ComputePrecision with op_selector for selective fp32 - only reliable way to pin specific ops without fusing.
+  - Spanish as template language - all subsequent 6L additions (de/it/pt) were mechanical because the first one established the pattern.
+  - verify_<lang>.py sanity scripts - catch language-specific regressions (like the tokenizer mismatch bug) without needing device testing.
+  - Sheet-based voice picker over inline Menu - reliably handles 21+ voices in a custom card layout.
+  - Explicit schemes block in project.yml to prevent xcodegen from wiping xcshareddata/xcschemes/.
+
+failed:
+  - PyTorch-side scores.float() cast for fp32 softmax - fused away by coremltools optimizer.
+  - 6-bit palettization on French 24L to reduce compile time - shrank artifacts but not compile work.
+  - Cached VoiceHandle in TTSViewModel - mutation poisoned KV for chunks 2+ in streaming mode. Now reload per call.
+  - Inline Menu / Picker-menu inside custom card layout - hit-test flakiness.
+  - flow_lm_main.mlpackage as AR-only (no text_embeddings input) - forced Python helper workflow until flow_lm_prefill.mlpackage was added.
+
+next:
+  - Optional: Stream -> Play/Share pipeline polish (accumulate streamed PCM into generatedPCM). ~15min.
+  - Optional: raise chunk token limit from 25 toward 40-50 in demo app (drift fix permits).
+  - Optional: background prewarm French at app launch to hide 11s compile.
+  - Feature: voice cloning from user .wav in Swift (stage 2 flow_lm prefill over mimi_encoder latents).
+  - Productization: CC-BY-NC-SA licensing resolution for any App Store distribution.
+
+files:
+  created:
+    - CONVERSION.md
+    - docs/investigations/fp16_drift_localization.md
+    - PocketTTSCoreML/Examples/DemoApp/**  # full SwiftUI demo app
+    - pockettts_coreml/oracle/verify_spanish.py
+    - pockettts_coreml/oracle/verify_german.py
+    - pockettts_coreml/oracle/verify_italian.py
+    - pockettts_coreml/oracle/verify_portuguese.py
+    - pockettts_coreml/oracle/verify_french.py
+    - thoughts/shared/handoffs/pockettts-coreml/2026-05-03_14-34_6-languages-and-drift-fix.yaml
+  modified:
+    - pockettts_coreml/convert/*.py        # --language + --palettize-bits flags
+    - pockettts_coreml/patches/*.py        # fp32-softmax+LN MIL pass
+    - pockettts_coreml/e2e/generator.py    # runtime language resolution
+    - PocketTTSCoreML/Sources/PocketTTSCoreML/KVCacheBuffers.swift   # nonisolated(unsafe) flowLayers
+    - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift        # configureFlowLayers
+    - PocketTTSCoreML/Examples/DemoApp/**                             # language picker + stats + share
+    - CONVERSION.md                        # per-language validation table, French runtime note
+    - .gitignore                           # voice dirs, palette artifacts, xcuserdata
