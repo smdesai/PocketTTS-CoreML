@@ -1,0 +1,88 @@
+---
+session: pockettts-coreml
+date: 2026-05-03
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: "Voice cloning from a user wav now works end-to-end in the Swift runtime and is surfaced in the demo app. Three on-device bugs found and fixed along the way (SafetensorsWriter header corruption, mimi_encoder ANE compiler hang, VoiceCloner re-construction cost). 34 Python tests + 9 Swift tests pass. CONVERSION.md updated."
+now: "Natural stopping point. Optional follow-ups -- Stream->Play/Share pipeline polish (~20 LOC), raise chunk token limit from 25 toward 40-50, 6-bit palettization for ship-size reduction, App Store licensing resolution."
+test: "POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/ then cd PocketTTSCoreML && swift test then swift run pocket-tts-cli clone --audio your.wav --out /tmp/cloned.safetensors"
+
+done_this_session:
+  - task: Voice cloning UI in DemoApp with record + files-picker input
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/CloneSheet.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/CloneRecorder.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/ContentView.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/TTSViewModel.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/VoiceCatalog.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/Info.plist
+      - PocketTTSCoreML/Examples/DemoApp/project.yml
+  - task: Fixed SafetensorsWriter use-after-scope corruption
+    files:
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/SafetensorsReader.swift
+  - task: Forced mimi_encoder to cpuOnly to avoid ANE compiler hang on iPhone
+    files:
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift
+  - task: Lazy + cached VoiceCloner on PocketTTS actor
+    files:
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/VoiceCloner.swift
+  - task: Phase timing logs inside VoiceCloner.clone
+    files:
+      - PocketTTSCoreML/Sources/PocketTTSCoreML/VoiceCloner.swift
+  - task: CONVERSION.md updated with 3 new landmines + 3 new lessons
+    files:
+      - CONVERSION.md
+
+blockers: []
+
+questions:
+  - CC-BY-NC-SA licensing still unresolved for App Store distribution (unchanged from prior sessions; flagged in CONVERSION.md).
+
+decisions:
+  - mimi_encoder_cpuonly_hardcoded: PocketTTS.ensureVoiceCloner forces computeUnits=.cpuOnly for the encoder specifically even when the rest of the model runs on .cpuAndNeuralEngine. Encoder has SEANet stride 6/5/4 inverse + depthwise ConvTrUpsample1d which crash the iOS ANE graph splitter. Encoder runs at ~70ms/predict on CPU anyway and is off the hot path (one call per clone).
+  - voice_cloner_lazy_not_preloaded: Building the VoiceCloner at PocketTTS.init would add 5-10s to every app startup. Instead build on first cloneVoice call and cache for the session. Cost is paid only by users who clone.
+  - safetensors_writer_fix_no_rawvaluepointer: "The use-after-scope bug in SafetensorsWriter was silently producing corrupt headers. Fixed by serializing via `Data(bytes: &localVar, count: ...)` which keeps the variable live during the read. This is a general Swift pattern to avoid."
+  - clone_ui_both_paths: Record via AVAudioRecorder AND pick from Files via .fileImporter. User gets the demo-compelling "clone your voice" flow plus the real-world "I have this wav already" flow.
+
+findings:
+  - safetensors_writer_was_corrupting_all_clones: The bug had been latent since voice cloning stage 2 landed. It only surfaced reliably on iPhone because the stack-overwrite pattern that clobbered the header-size prefix was more aggressive there. Mac got lucky. Every clone ever written by this code was corrupt; Mac read-back happened to tolerate the garbage header because of how the JSON parse failed.
+  - mimi_encoder_and_iphone_ane_splitter_hang: Not a graceful fallback - iOS's ANE program compiler can enter non-terminating states when graph-splitting around unsupported ops. Never use .cpuAndNeuralEngine for a submodel where the majority of ops aren't ANE-supported. Prefer per-model computeUnits over global.
+  - ane_program_cache_is_per-app-binary_identity: Spent an hour chasing a phantom "startup went from 3s to 30s" regression. The 3s number was warm-cache; true cold-install startup for 5 mlmodelc bundles on A19 Pro is 60-80s. Every rebuild or reinstall invalidates the cache. Diagnostic move is to close+relaunch app without rebuilding; if that drops to 3s, you're fine.
+  - mlmultiarray_has_padded_strides: mimi_encoder output on ANE-aligned hardware has strides [2048, 64, 1] for shape [1, 32, 50] (channel dim padded 50->64 for alignment). Naive dataPointer.bindMemory reads garbage past channel 0. Gather through .strides explicitly. Documented in CONVERSION.md §4.4.
+  - withunsafepointer_return_is_undefined: Returning a pointer from a `withUnsafePointer(to:)` closure and using it afterwards is use-after-scope. Stack slot can be reused once the closure returns. Mac may tolerate it; iPhone reliably does not.
+
+worked:
+  - Writing phase-timing logs inside VoiceCloner.clone before diagnosing. Made it immediately clear the clone was stuck in MLModel init, not in any predict call.
+  - Reproducing the SafetensorsWriter bug on Mac via the CLI (clone alba.wav + Python-parse the output file). The header_size of 6.8 billion immediately told us what was wrong.
+  - Having the CLI path available for direct Mac reproduction of voice-clone bugs without involving the iOS app + Xcode loop.
+
+failed:
+  - Initial hypothesis that the 3s->30s startup regression was code-related. It was cold-cache, not a regression. Cost an hour of investigation.
+  - Trying 6-bit palettization on French as an ANE-compile-time mitigation. It shrinks artifacts (2.7x) but does not reduce compile time or memory pressure. Reverted that change.
+  - Attempting to preload mimi_encoder at PocketTTS.init to warm it. Added 5-10s to every app startup for users who never clone. Reverted to lazy.
+
+next:
+  - Optional: Stream -> Play/Share pipeline polish. 15 min.
+  - Optional: raise chunk token limit from 25 toward 40-50 in demo app now that drift fix is stable.
+  - Optional: background prewarm for French to hide 11s ANE compile behind app startup.
+  - Optional: 6-bit palettize 6L languages to cut 4.16 GB total Resources by ~60 percent. Quality gate re-run per language.
+  - Productization: CC-BY-NC-SA licensing resolution for any App Store distribution.
+
+files:
+  created:
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/CloneSheet.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/CloneRecorder.swift
+    - thoughts/shared/handoffs/pockettts-coreml/2026-05-03_16-42_voice-clone-ui-and-three-bug-fixes.yaml
+  modified:
+    - PocketTTSCoreML/Sources/PocketTTSCoreML/SafetensorsReader.swift
+    - PocketTTSCoreML/Sources/PocketTTSCoreML/VoiceCloner.swift
+    - PocketTTSCoreML/Sources/PocketTTSCoreML/PocketTTS.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/ContentView.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/TTSViewModel.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/VoiceCatalog.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/Info.plist
+    - PocketTTSCoreML/Examples/DemoApp/project.yml
+    - CONVERSION.md
