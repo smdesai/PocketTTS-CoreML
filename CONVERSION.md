@@ -7,16 +7,21 @@ significant bug encountered, and lessons learned that would bite anyone
 porting a similar model.
 
 **Status:** English, Spanish, German, Italian, Portuguese, and French
-all ship on device. The first five use the identical 6-layer 1024d
-architecture and share ~356 MB per-language bundles. French ships as
-the 24-layer `french_24l` variant (the only variant Kyutai published
-for French) and has ~4× the transformer footprint: per-language
-bundle ~1.05 GB, voice `.safetensors` ~25 MB each (vs ~7 MB for 6L),
-per-step compute ~4× slower. iPhone 17 Pro A19 Pro (measured on
-English): warm RTF 0.09 (7.44× realtime), speaker similarity 0.98 vs
-Python reference, thermal `.nominal`, 46.9% ANE residency on
-`flow_lm_main`. French device RTF should be measured separately;
-theoretical upper bound is ~1/4 of the 6L RTFx.
+all ship on device, with **voice cloning from a user `.wav`** wired
+end-to-end in the Swift runtime and surfaced in the demo app's Voice
+picker ("+ Clone new voice" → record or pick audio). The first five
+languages use the identical 6-layer 1024d architecture and share
+~356 MB per-language bundles. French ships as the 24-layer
+`french_24l` variant (the only variant Kyutai published for French)
+and has ~4× the transformer footprint: per-language bundle ~1.05 GB,
+voice `.safetensors` ~25 MB each (vs ~7 MB for 6L), per-step compute
+~4× slower. iPhone 17 Pro A19 Pro (measured on English): warm RTF
+0.09 (7.44× realtime), speaker similarity 0.98 vs Python reference,
+thermal `.nominal`, 46.9% ANE residency on `flow_lm_main`. First
+cold-install startup on A19 Pro takes ~60–80 s (ANE program compile
+for 5 mlmodelc bundles); subsequent launches are ~3 s (warm cache).
+French device RTF should be measured separately; theoretical upper
+bound is ~1/4 of the 6L RTFx.
 
 ---
 
@@ -360,6 +365,21 @@ normal text-prefill path over the voice KV (writing to slots
   (`fp16[1, 128, 1024]` after padding) and the prefill bundle has
   no special casing for which kind of conditioning it sees. Masks and
   RoPE are constructed in Swift per-call based on `startOffset`.
+- **`mimi_encoder` must be loaded with `MLComputeUnits.cpuOnly`**.
+  When loaded with `.cpuAndNeuralEngine`, iOS CoreML's ANE program
+  compiler attempts to split the graph around the SEANet
+  stride 6/5/4 inverse + depthwise `ConvTrUpsample1d` ops (which
+  aren't ANE-supported) and **hangs indefinitely** inside
+  `MLModel(contentsOf:)`. The encoder ships at ~70 ms/predict on CPU
+  and runs once per clone (not per AR frame), so forcing CPU has no
+  user-visible cost. `PocketTTS.ensureVoiceCloner` hard-codes
+  `.cpuOnly` for this reason; don't "fix" it back to the runtime's
+  computeUnits.
+- **`VoiceCloner` is lazy + cached.** `PocketTTS` builds the cloner
+  on the first `cloneVoice` call (paying the mimi_encoder init +
+  CPU-path compile cost once) and keeps it alive for all subsequent
+  clones in the same session. Preloading at `PocketTTS.init` instead
+  would add ~5–10 s to app startup even for users who never clone.
 
 ---
 
@@ -546,6 +566,101 @@ script.
 include the project's site-packages. **Use `.venv/bin/python -m pytest`
 directly** — the project venv has the right deps.
 
+### 6.10 SafetensorsWriter use-after-scope corruption (cloned voices)
+
+Symptom: cloned voice files written by `VoiceLoader.saveVoiceOnly`
+failed to load with `SafetensorsError.unsupportedDType` when the
+runtime tried to use them. Mac often worked; iPhone always failed.
+Inspection showed the 8-byte header-size prefix held garbage bytes
+(observed `6_812_757_168` instead of the correct `1272`), and the
+JSON header was effectively unreadable past position 1273.
+
+Root cause: the writer was serializing `UInt64(headerBytes.count)
+.littleEndian` into `Data` with this pattern:
+
+    out.append(Data(
+        bytes: withUnsafePointer(to: headerSize) { UnsafeRawPointer($0) },
+        count: 8
+    ))
+
+`withUnsafePointer(to:)` hands the closure a pointer to the
+stack-local `headerSize`. Returning that pointer from the closure and
+using it in `Data(bytes:count:)` is a **use-after-scope**: the
+compiler is free to reuse the stack slot once the closure returns,
+and by the time `Data` reads the 8 bytes those bytes may have been
+overwritten by the next tensor payload. iPhone was reliably
+clobbering them; Mac occasionally got lucky.
+
+Fix: serialize via a local `var` + inout pointer, which guarantees
+the variable is still alive while `Data` reads it:
+
+    var headerSizeLE = UInt64(headerBytes.count).littleEndian
+    let headerSizeBytes = Data(
+        bytes: &headerSizeLE,
+        count: MemoryLayout<UInt64>.size
+    )
+
+**General rule for Swift `UnsafePointer` patterns:** any pointer
+returned from a `withUnsafePointer`-style closure is only valid
+inside the closure body. Using it after the closure returns is
+undefined behavior — even if Mac seems to tolerate it.
+
+### 6.11 mimi_encoder ANE compiler hang on iPhone
+
+Symptom: loading `mimi_encoder.mlmodelc` on iPhone via
+`MLModel(contentsOf:configuration:)` with `computeUnits=
+.cpuAndNeuralEngine` never returned. Load time was "still running
+after 30+ seconds" with the app appearing hung during first
+voice-clone. Mac did not reproduce. Other models (flow_lm_main,
+flow_lm_prefill, mimi_decoder, flow_lm_flow, text_conditioner)
+loaded fine with the same compute-units setting.
+
+Root cause: mimi_encoder has SEANet stride-6/5/4 inverse convolutions
+and a depthwise `ConvTrUpsample1d` with `stride=16, groups=512` —
+none of which are ANE-supported. iOS 26's ANE program compiler tries
+to split the graph around these ops; for this particular encoder
+shape the splitter enters a state from which it never returns
+(confirmed by pause-in-Xcode landing inside an ANECompilerService
+call stack for minutes).
+
+Fix: force `computeUnits = .cpuOnly` when loading `mimi_encoder`
+specifically. Hard-coded in `PocketTTS.ensureVoiceCloner`. The
+encoder was measured at ~70 ms/predict on CPU anyway (it's off the
+hot path — runs once per voice clone, not per AR frame), so there's
+no perf cost.
+
+**General rule:** for CoreML submodels that are mostly CPU-fallback
+anyway, don't include ANE in their `computeUnits`. ANE's graph
+splitter has known loop/hang modes when too many unsupported ops
+force it to fragment the graph too aggressively.
+
+### 6.12 ANE program cache is per-app-identity
+
+Spent an hour chasing a phantom "startup went from 3s → 30s" regression.
+The 3s number we'd measured before was **warm ANE program cache** from
+previous app launches. True cold-install startup is 60–80 s for 5
+mlmodelc bundles on A19 Pro (each model pays a multi-second ANE
+program compile). After that first launch, subsequent launches of
+the same app binary are ~3 s (cache hit).
+
+Any action that changes the app framework binary identity invalidates
+the cache. Examples we observed:
+- Xcode rebuild that touches the SwiftPM package binary
+- `Product → Clean Build Folder`
+- Delete + reinstall app
+
+**Diagnosis rule:** when "load got slower" after an edit, **close the
+app from the switcher and relaunch without rebuilding**. If the second
+launch is fast, you're just seeing cold-cache cost on reinstalls — no
+real regression.
+
+**Practical mitigations for production apps:**
+- Show a splash screen "Preparing voices (first launch only)…" that
+  runs the load in a background task.
+- Or do it via a Background Task + local notification so the user
+  doesn't sit watching a spinner.
+- Or use App Clips / App Extensions to amortize the cost.
+
 ---
 
 ## 7. Directory layout
@@ -687,6 +802,28 @@ pocketTTS-CoreML/
     a per-buffer `finishIndex` explicitly — don't read the mutable
     state from inside the closure.
 
+16. **Never use `withUnsafePointer(to:) { UnsafeRawPointer($0) }`
+    and use the result after the closure returns.** The pointer
+    references a stack-local that goes out of scope when the closure
+    exits. Swift is free to reuse the slot; you'll read whatever
+    overwrote it. Mac often gets away with it; iPhone reliably does
+    not. Use `Data(bytes: &localVar, count: …)` instead — it reads
+    the bytes while `localVar` is still in scope. SafetensorsWriter
+    had this bug for ~3 weeks before surfacing on iPhone (§6.10).
+
+17. **`.cpuAndNeuralEngine` can hang iOS CoreML** on models where
+    most ops are ANE-unsupported. The ANE graph splitter enters a
+    non-terminating state trying to fragment the graph. If a
+    submodel is mostly CPU-fallback anyway, force `.cpuOnly`. We
+    had to do this for `mimi_encoder` (§6.11).
+
+18. **ANE program cache is keyed to app-binary identity.** Rebuild
+    or reinstall → cold compile. "Startup got slower" after an edit
+    is usually just cold-cache cost; relaunch without rebuilding to
+    confirm. Real first-install cost for 5 mlmodelc bundles on A19
+    Pro is 60–80 s (§6.12), not the 3 s warm-cache number most
+    measurements were picking up.
+
 ### 8.5 On process
 
 16. **Chunk planning paid for itself many times over.** The original
@@ -768,6 +905,8 @@ pocketTTS-CoreML/
 - Conversion notes: `docs/phase2_3_notes.md`
 - Mimi state layout: `docs/mimi_state_layout.md`
 - Drift investigation: `docs/investigations/fp16_drift_localization.md`
-- Session handoff: `thoughts/shared/handoffs/pockettts-coreml/2026-05-01_21-38_demo-app-shipped.yaml`
+- Session handoffs:
+  - `thoughts/shared/handoffs/pockettts-coreml/2026-05-01_21-38_demo-app-shipped.yaml`
+  - `thoughts/shared/handoffs/pockettts-coreml/2026-05-03_14-34_6-languages-and-drift-fix.yaml`
 - Kyutai PocketTTS paper: [arxiv 2509.06926](https://arxiv.org/abs/2509.06926)
 - Upstream repo: [kyutai-labs/pocket-tts](https://github.com/kyutai-labs/pocket-tts)
