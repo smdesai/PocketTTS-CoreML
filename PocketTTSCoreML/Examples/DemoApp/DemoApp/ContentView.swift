@@ -168,8 +168,7 @@ struct ContentView: View {
         )
         .sheet(isPresented: $showVoiceSheet) {
             VoiceListSheet(
-                voices: viewModel.voices,
-                selectedID: viewModel.selectedVoice?.id,
+                viewModel: viewModel,
                 onPick: { voice in
                     viewModel.selectedVoice = voice
                     showVoiceSheet = false
@@ -495,32 +494,88 @@ private struct LanguageListSheet: View {
 /// Full-screen sheet with one row per voice. Sheet-based selection is
 /// immune to the hit-test flakiness Menu/Picker can show when they sit
 /// inside a custom card layout with nearby tap gestures.
+///
+/// Top row is "+ Clone new voice" — tapping it presents CloneSheet
+/// modally. On successful clone, the voice list refreshes (bundled +
+/// Documents/ClonedVoices/<lang>/) and the newly-cloned voice is
+/// auto-selected and the sheet dismissed.
+///
+/// Cloned voices (`VoiceEntry.isCloned == true`) are rendered with a
+/// "(cloned)" suffix and support swipe-to-delete. Bundled voices are
+/// read-only and cannot be deleted.
 private struct VoiceListSheet: View {
-    let voices: [VoiceEntry]
-    let selectedID: String?
+    let viewModel: TTSViewModel
     let onPick: (VoiceEntry) -> Void
     let onCancel: () -> Void
+
+    @State private var showCloneSheet: Bool = false
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(voices) { voice in
+                // "+ Clone new voice" row — always the first row, regardless
+                // of whether cloning is available for this language (the
+                // CloneSheet itself shows a helpful message if not).
+                Section {
                     Button {
-                        onPick(voice)
+                        showCloneSheet = true
                     } label: {
-                        HStack {
-                            Text(voice.displayName)
-                                .foregroundStyle(.primary)
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                            Text("Clone new voice")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
                             Spacer()
-                            if voice.id == selectedID {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(Color.accentColor)
-                                    .fontWeight(.semibold)
-                            }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.secondary)
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+
+                Section("Voices") {
+                    ForEach(viewModel.voices) { voice in
+                        Button {
+                            onPick(voice)
+                        } label: {
+                            HStack(spacing: 8) {
+                                if voice.isCloned {
+                                    Image(systemName: "waveform.badge.plus")
+                                        .foregroundStyle(.tint)
+                                }
+                                Text(voice.displayName)
+                                    .foregroundStyle(.primary)
+                                if voice.isCloned {
+                                    Text("(cloned)")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if voice.id == viewModel.selectedVoice?.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        // Swipe-to-delete only on cloned voices. Bundled
+                        // voices live in the read-only app bundle.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if voice.isCloned {
+                                Button(role: .destructive) {
+                                    deleteCloned(voice)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle("Select voice")
@@ -530,9 +585,39 @@ private struct VoiceListSheet: View {
                     Button("Done", action: onCancel)
                 }
             }
+            .sheet(isPresented: $showCloneSheet) {
+                CloneSheet(
+                    viewModel: viewModel,
+                    onCloned: { _ in
+                        // TTSViewModel.cloneVoice already refreshed and
+                        // auto-selected the new voice. Dismiss both the
+                        // clone sheet and the voice picker so the user
+                        // returns to the main screen with their new
+                        // voice active.
+                        showCloneSheet = false
+                        onCancel()
+                    },
+                    onCancel: { showCloneSheet = false }
+                )
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func deleteCloned(_ entry: VoiceEntry) {
+        do {
+            try VoiceCatalog.deleteCloned(entry)
+            // Refresh the list. If the deleted voice was selected, fall
+            // back to the first remaining voice.
+            let wasSelected = viewModel.selectedVoice?.id == entry.id
+            viewModel.refreshVoices(
+                selectingID: wasSelected ? nil : viewModel.selectedVoice?.id
+            )
+        } catch {
+            // Silently swallow — deletion failure is rare (permission /
+            // missing file) and the refresh will naturally re-sync.
+        }
     }
 }
 

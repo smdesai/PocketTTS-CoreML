@@ -144,7 +144,7 @@ public final class TTSViewModel {
         status = "Warming up \(language.displayName)…"
         await model.warmup()
 
-        let langVoices = VoiceCatalog.bundled(for: language.id)
+        let langVoices = VoiceCatalog.all(for: language.id)
         if langVoices.isEmpty {
             throw DemoError.missingResource(
                 "No voices found for \(language.displayName). Run prepare_resources.sh."
@@ -152,6 +152,45 @@ public final class TTSViewModel {
         }
         self.voices = langVoices
         self.selectedVoice = langVoices.first
+    }
+
+    /// Refresh the voice list for the currently-selected language by
+    /// re-scanning both bundled voices and Documents/ClonedVoices/<id>/.
+    /// Used after the clone flow saves a new voice, and after a clone is
+    /// deleted from the picker. Optionally selects a specific voice id
+    /// (e.g. the one that was just cloned).
+    public func refreshVoices(selectingID: String? = nil) {
+        let all = VoiceCatalog.all(for: selectedLanguage.id)
+        self.voices = all
+        if let wantedID = selectingID,
+           let match = all.first(where: { $0.id == wantedID }) {
+            self.selectedVoice = match
+        } else if let current = selectedVoice,
+                  all.contains(where: { $0.id == current.id }) {
+            // Preserve current selection if it's still present.
+        } else {
+            self.selectedVoice = all.first
+        }
+    }
+
+    /// Run the full on-device voice cloning pipeline
+    /// (mimi_encoder → speaker_proj → flow_lm_prefill) on the audio at
+    /// `audioURL`, save the resulting VoiceHandle as a `.safetensors` under
+    /// Documents/ClonedVoices/<language>/<name>.safetensors, and return
+    /// the filename stem that was used (caller uses this to select the
+    /// newly-cloned voice in the picker). Throws if cloning is unavailable
+    /// for this language (missing speaker_proj sidecar) or the pipeline
+    /// errors out.
+    public func cloneVoice(from audioURL: URL, named rawName: String) async throws -> String {
+        guard let tts = tts else {
+            throw DemoError.missingResource("PocketTTS not loaded yet.")
+        }
+        let destURL = VoiceCatalog.clonedVoiceURL(
+            language: selectedLanguage.id, rawName: rawName
+        )
+        let handle = try await tts.cloneVoice(from: audioURL)
+        try await tts.saveVoice(handle, to: destURL)
+        return destURL.deletingPathExtension().lastPathComponent
     }
 
     /// Switch the runtime to a different language. Cancels any running
