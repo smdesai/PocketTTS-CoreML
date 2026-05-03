@@ -65,8 +65,14 @@ class CoreMLGenerator:
     EOS_THRESHOLD = -4.0
     SEED = 42
 
-    def __init__(self, artifacts_dir: Path, compute_units: str = "CPU_ONLY"):
+    def __init__(
+        self,
+        artifacts_dir: Path,
+        compute_units: str = "CPU_ONLY",
+        language: str = "english",
+    ):
         self.artifacts_dir = Path(artifacts_dir)
+        self.language = language
         # Lazy-load mlmodels.
         self._text_cond = None
         self._flow_main = None
@@ -349,7 +355,7 @@ class CoreMLGenerator:
 
         # 1) Reference model for tokenizer + voice state + prefill graph.
         from pockettts_coreml.patches import build_patched_submodules
-        ps = build_patched_submodules()
+        ps = build_patched_submodules(language=self.language)
         tts_model = ps.tts_model
         tts_model.eval()
 

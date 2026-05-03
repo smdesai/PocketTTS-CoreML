@@ -188,7 +188,7 @@ def _export_bos_sidecar(bos_emb: torch.Tensor, out_path: Path) -> None:
                 out_path, int(bos.numel()))
 
 
-def convert(save_path: Path) -> None:
+def convert(save_path: Path, language: str = "english") -> None:
     # Selective fp32 softmax: default ON. See convert_flow_lm_main.py for
     # rationale and `docs/investigations/fp16_drift_localization.md` for
     # the drift measurement. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
@@ -197,7 +197,7 @@ def convert(save_path: Path) -> None:
     use_fp32_softmax = (
         _os.environ.get("POCKETTTS_FLOW_MAIN_FP16_SOFTMAX", "0") != "1"
     )
-    ps = build_patched_submodules(use_fp32_softmax=use_fp32_softmax)
+    ps = build_patched_submodules(language=language, use_fp32_softmax=use_fp32_softmax)
     main = ps.flow_lm_main
     wrap = _FlowLMMainPrefillWrap(main)
     wrap.eval()
@@ -282,10 +282,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_flow_lm_prefill")
     p.add_argument("--save-path", type=Path,
                    default=ARTIFACTS_DIR / "flow_lm_prefill.mlpackage")
+    p.add_argument("--language", default="english",
+                   help="Reference language config (english/spanish/...).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path)
+    convert(args.save_path, language=args.language)
     return 0
 
 

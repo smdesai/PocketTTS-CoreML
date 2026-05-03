@@ -98,7 +98,7 @@ class _FlowLMMainARWrap(nn.Module):
         return ctx, eos_logit, kv_cache_out
 
 
-def convert(save_path: Path, spot_offset: int = 3) -> None:
+def convert(save_path: Path, spot_offset: int = 3, language: str = "english") -> None:
     # Selective fp32 softmax: default ON. Emits cast-up/softmax/cast-down
     # around the attention reduction so CoreML keeps the softmax at fp32
     # while weights stay fp16. Set POCKETTTS_FLOW_MAIN_FP16_SOFTMAX=1 to
@@ -107,7 +107,7 @@ def convert(save_path: Path, spot_offset: int = 3) -> None:
     use_fp32_softmax = (
         _os.environ.get("POCKETTTS_FLOW_MAIN_FP16_SOFTMAX", "0") != "1"
     )
-    ps = build_patched_submodules(use_fp32_softmax=use_fp32_softmax)
+    ps = build_patched_submodules(language=language, use_fp32_softmax=use_fp32_softmax)
     main = ps.flow_lm_main
     wrap = _FlowLMMainARWrap(main)
     wrap.eval()
@@ -226,10 +226,12 @@ def convert(save_path: Path, spot_offset: int = 3) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_flow_lm_main")
     p.add_argument("--save-path", type=Path, default=ARTIFACTS_DIR / "flow_lm_main.mlpackage")
+    p.add_argument("--language", default="english",
+                   help="Reference language config (english/spanish/...).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path)
+    convert(args.save_path, language=args.language)
     return 0
 
 

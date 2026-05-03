@@ -169,8 +169,8 @@ class _MimiEncoderWrap(nn.Module):
         return x
 
 
-def convert(save_path: Path, t_audio: int = DEFAULT_T_AUDIO) -> None:
-    ps = build_patched_submodules()
+def convert(save_path: Path, t_audio: int = DEFAULT_T_AUDIO, language: str = "english") -> None:
+    ps = build_patched_submodules(language=language)
     mimi = ps.mimi_model
     mimi.eval()
 
@@ -212,10 +212,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--save-path", type=Path, default=ARTIFACTS_DIR / "mimi_encoder.mlpackage")
     p.add_argument("--t-audio", type=int, default=DEFAULT_T_AUDIO,
                    help=f"Audio length in samples (default: {DEFAULT_T_AUDIO}).")
+    p.add_argument("--language", default="english",
+                   help="Reference language config (english/spanish/...).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path, args.t_audio)
+    convert(args.save_path, args.t_audio, language=args.language)
     return 0
 
 

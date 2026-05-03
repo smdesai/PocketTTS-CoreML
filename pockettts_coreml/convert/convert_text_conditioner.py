@@ -61,8 +61,8 @@ class _TextConditionerGraph(nn.Module):
         return self.embed(tokens)
 
 
-def convert(save_path: Path) -> None:
-    ps = build_patched_submodules()
+def convert(save_path: Path, language: str = "english") -> None:
+    ps = build_patched_submodules(language=language)
     ref_lut = ps.text_conditioner  # LUTConditioner
     n_bins_plus_one = int(ref_lut.embed.num_embeddings)  # 4001
     dim = int(ref_lut.embed.embedding_dim)              # 1024
@@ -128,10 +128,12 @@ def _predict_embeddings(mlmodel, tokens: torch.Tensor):
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_text_conditioner")
     p.add_argument("--save-path", type=Path, default=ARTIFACTS_DIR / "text_conditioner.mlpackage")
+    p.add_argument("--language", default="english",
+                   help="Reference language config (english/spanish/...).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path)
+    convert(args.save_path, language=args.language)
     return 0
 
 

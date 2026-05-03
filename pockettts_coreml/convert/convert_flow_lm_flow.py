@@ -56,8 +56,8 @@ class _FlowLMFlowWrap(nn.Module):
         return self.flow(c, s, t, x, num_steps_inv=1.0)
 
 
-def convert(save_path: Path) -> None:
-    ps = build_patched_submodules()
+def convert(save_path: Path, language: str = "english") -> None:
+    ps = build_patched_submodules(language=language)
     flow = ps.flow_lm_flow
     wrap = _FlowLMFlowWrap(flow)
     wrap.eval()
@@ -111,10 +111,12 @@ def convert(save_path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="convert_flow_lm_flow")
     p.add_argument("--save-path", type=Path, default=ARTIFACTS_DIR / "flow_lm_flow.mlpackage")
+    p.add_argument("--language", default="english",
+                   help="Reference language config (english/spanish/...).")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
     setup_logging(args.log_level)
-    convert(args.save_path)
+    convert(args.save_path, language=args.language)
     return 0
 
 
