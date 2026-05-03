@@ -24,6 +24,24 @@ public final class VoiceCloner: @unchecked Sendable {
     public let orchestrator: Orchestrator
     public let speakerProj: SpeakerProjection
 
+    /// Preferred initializer: reuses a pre-loaded mimi_encoder MLModel so
+    /// repeat clones in the same session don't pay the ~2-3s instance-
+    /// init + ANE program hand-off cost. `PocketTTS.init` loads the
+    /// encoder once and caches a VoiceCloner on the actor for all
+    /// subsequent clone calls.
+    public init(
+        encoder: MLModel,
+        orchestrator: Orchestrator,
+        speakerProjection: SpeakerProjection
+    ) {
+        self.encoder = encoder
+        self.orchestrator = orchestrator
+        self.speakerProj = speakerProjection
+    }
+
+    /// Legacy path: constructs its own encoder from a URL. Each call to
+    /// this initializer pays MLModel load + ANE program init cost, so
+    /// prefer the encoder-passed form above for per-clone reuse.
     public init(
         mimiEncoderURL: URL,
         orchestrator: Orchestrator,
@@ -54,8 +72,20 @@ public final class VoiceCloner: @unchecked Sendable {
     /// Run the full two-stage clone on a reference waveform and return a
     /// `.voiceOnly` VoiceHandle with the voice KV populated.
     public func clone(from audioURL: URL) async throws -> VoiceHandle {
-        // --- Stage 1: mimi_encoder on exactly 4 s of audio -------------------
+        let t0 = Date()
+        func log(_ phase: String, _ startedAt: Date) {
+            let dt = Date().timeIntervalSince(startedAt)
+            let total = Date().timeIntervalSince(t0)
+            let msg = String(format: "[clone] %@ took %.2fs (total %.2fs)\n",
+                             phase, dt, total)
+            FileHandle.standardError.write(Data(msg.utf8))
+        }
+
+        // --- Stage 1: load + resample + mimi_encoder ------------------------
+        let tLoad = Date()
         let samples = try Self.loadMonoFloat32_24k(from: audioURL)
+        log("load+resample (input \(samples.count) samples)", tLoad)
+
         let target = 96_000
         var buffer = [Float](repeating: 0, count: target)
         let copy = min(samples.count, target)
@@ -71,21 +101,29 @@ public final class VoiceCloner: @unchecked Sendable {
         let provider = try MLDictionaryFeatureProvider(dictionary: [
             "waveform": MLFeatureValue(multiArray: waveform)
         ])
+
+        let tEnc = Date()
         let result = try autoreleasepool { try encoder.prediction(from: provider) }
+        log("mimi_encoder predict", tEnc)
+
         guard let latents = result.featureValue(for: "latents")?.multiArrayValue else {
             throw NSError(domain: "VoiceCloner", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "mimi_encoder returned no latents"
             ])
         }
+
         // --- Stage 2a: apply speaker projection ----------------------------
+        let tProj = Date()
         let (projected, _) = try VoiceProjection.applySpeakerProjection(
             latents: latents, proj: speakerProj.weight
         )
         let (conditioning, tVoice) = try VoiceProjection.prependBosBeforeVoice(
             conditioning: projected, bosBeforeVoice: speakerProj.bosBeforeVoice
         )
+        log("speaker_proj + BOS prepend (T_voice=\(tVoice))", tProj)
 
         // --- Stage 2b: allocate zero-filled KV, run flow_lm_prefill --------
+        let tKV = Date()
         let kvShape: [NSNumber] = [
             NSNumber(value: 2 * PocketTTSArch.flowLayers), 1,
             NSNumber(value: PocketTTSArch.flowSCap),
@@ -96,12 +134,16 @@ public final class VoiceCloner: @unchecked Sendable {
         let total = voiceKV.count
         let kvPtr = voiceKV.dataPointer.bindMemory(to: UInt16.self, capacity: total)
         for i in 0..<total { kvPtr[i] = 0 }
+        log("alloc+zero KV", tKV)
 
+        let tPrefill = Date()
         let voiceOffset = try orchestrator.runVoicePrefill(
             voiceKV: voiceKV, voiceConditioning: conditioning
         )
+        log("flow_lm_prefill predict", tPrefill)
         precondition(voiceOffset == tVoice)
 
+        log("TOTAL clone() excl VoiceCloner init", t0)
         return VoiceHandle(
             kind: .voiceOnly(
                 flowKVRank5: MLMultiArrayBox(voiceKV),

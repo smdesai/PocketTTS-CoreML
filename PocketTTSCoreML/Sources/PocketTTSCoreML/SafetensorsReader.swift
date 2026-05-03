@@ -238,10 +238,19 @@ public enum SafetensorsWriter {
         var headerBytes = json
         let pad = (8 - headerBytes.count % 8) % 8
         if pad > 0 { headerBytes.append(Data(repeating: 0x20, count: pad)) } // space pad
-        let headerSize = UInt64(headerBytes.count).littleEndian
+        // Serialize headerSize as 8-byte little-endian without relying on
+        // `withUnsafePointer(to:)`-returning-a-pointer (that pointer is
+        // only valid inside the closure body; using it afterwards is a
+        // use-after-scope that surfaced on iPhone as garbage bytes in
+        // the header-size prefix, corrupting the file).
+        var headerSizeLE = UInt64(headerBytes.count).littleEndian
+        let headerSizeBytes = Data(
+            bytes: &headerSizeLE,
+            count: MemoryLayout<UInt64>.size
+        )
 
         var out = Data()
-        out.append(Data(bytes: withUnsafePointer(to: headerSize) { UnsafeRawPointer($0) }, count: 8))
+        out.append(headerSizeBytes)
         out.append(headerBytes)
         for t in tensors.sorted(by: { $0.name < $1.name }) {
             out.append(t.data)
