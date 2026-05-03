@@ -51,7 +51,7 @@ LANG_SPECS=(
     "de|$REPO/Artifacts/de_fp16_mlmodelc|$REPO/voices_german|$REPO/voices_german/tokenizer.model"
     "it|$REPO/Artifacts/it_fp16_mlmodelc|$REPO/voices_italian|$REPO/voices_italian/tokenizer.model"
     "pt|$REPO/Artifacts/pt_fp16_mlmodelc|$REPO/voices_portuguese|$REPO/voices_portuguese/tokenizer.model"
-    "fr|$REPO/Artifacts/fr_fp16_mlmodelc|$REPO/voices_french|$REPO/voices_french/tokenizer.model"
+    "fr|$REPO/Artifacts/fr_fp16_palette6_mlmodelc|$REPO/voices_french|$REPO/voices_french/tokenizer.model"
 )
 
 # ------------------------------------------------------------------
