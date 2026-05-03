@@ -33,7 +33,11 @@ LOGGER = logging.getLogger("pockettts_coreml.convert.__main__")
 
 _GREEN = ("text_conditioner", "flow_lm_main", "flow_lm_prefill", "flow_lm_flow")
 _YELLOW = ("mimi_encoder", "mimi_decoder")
-_ALL = _GREEN + _YELLOW
+# `speaker_proj` is a non-CoreML sidecar (plain safetensors) needed for
+# voice-cloning stage 2 — kept in this driver so `--all` also drops the
+# sidecar alongside the mlpackages.
+_SIDECARS = ("speaker_proj",)
+_ALL = _GREEN + _YELLOW + _SIDECARS
 
 
 def _run_one(
@@ -83,6 +87,11 @@ def _run_one(
                 return True, "SKIPPED (yellow; pass --include-yellow to attempt)"
             from pockettts_coreml.convert.convert_mimi_decoder import convert
             convert(out_dir / "mimi_decoder.mlpackage", language=language)
+        elif name == "speaker_proj":
+            # Not a CoreML bundle; a safetensors sidecar for voice-cloning
+            # stage 2. Cheap (~130 KB, <1s).
+            from pockettts_coreml.convert.export_speaker_proj import export
+            export(out_dir / "speaker_proj.safetensors", language=language)
         else:
             return False, f"unknown submodel '{name}'"
     except Exception as exc:
@@ -95,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m pockettts_coreml.convert",
         description="Drive all or a subset of per-submodel CoreML conversions.",
     )
-    p.add_argument("--all", action="store_true", help=f"Run all 5 submodels: {_ALL}")
+    p.add_argument("--all", action="store_true", help=f"Run all submodels + sidecars: {_ALL}")
     p.add_argument(
         "--only", action="append", default=[],
         choices=list(_ALL),
