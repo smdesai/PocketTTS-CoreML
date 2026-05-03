@@ -77,3 +77,14 @@ Artifacts/fr_fp16_palette8_mlmodelc/
 
 # Per-language DemoApp Resources (physical copies made by prepare_resources.sh)
 PocketTTSCoreML/Examples/**/Resources/Languages/
+
+# Kraken agent scratch dirs (handoff checkpoints, not intended for main branch)
+thoughts/shared/handoffs/kraken-*/
+
+# One-off debug scripts from kraken's voice-clone work; keep verify_clone.py
+tools/debug_*.py
+tools/verify_voice_prefill.py
+
+# Dev-tool configs kraken proposed but we didn't ask for
+.pre-commit-config.yaml
+.swift-format

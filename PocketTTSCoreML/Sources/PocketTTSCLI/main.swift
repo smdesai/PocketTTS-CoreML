@@ -38,6 +38,7 @@ struct PocketTTSCLI {
           benchmark --artifacts DIR --tokenizer MODEL --voice VOICE.safetensors
                     [--iterations N]
           clone     --artifacts DIR --audio INPUT.wav --out CLONED.safetensors
+                    [--sample-text TEXT --sample-out WAV]
           tokenize  --tokenizer MODEL --text TEXT
 
         Notes:
@@ -170,26 +171,46 @@ struct PocketTTSCLI {
         let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let audioURL = URL(fileURLWithPath: try a.get("--audio"))
         let outURL = URL(fileURLWithPath: try a.get("--out"))
+        let sampleText = a.maybe("--sample-text")
+        let sampleOutURL = a.maybe("--sample-out").map { URL(fileURLWithPath: $0) }
 
+        fputs("Loading models from \(artifactsURL.path)...\n", stderr)
         let tts = try await PocketTTS(
             artifactsBundle: artifactsURL, tokenizerPath: tokenizerURL,
             computeUnits: .cpuAndNeuralEngine
         )
+        fputs("Cloning voice from \(audioURL.lastPathComponent) (stages: mimi_encoder + speaker_proj + flow_lm_prefill)...\n", stderr)
+        let t0 = Date()
         let handle = try await tts.cloneVoice(from: audioURL)
+        let cloneWall = Date().timeIntervalSince(t0)
+
+        let voiceOff: Int
         switch handle.kind {
-        case .prefilled:
-            try await tts.saveVoice(handle, to: outURL)
-            print("Wrote \(outURL.path)")
-        case .voiceOnly:
-            // cloneVoice only runs mimi_encoder — it does NOT produce the
-            // 6-layer FlowLM voice KV. Pull the Mimi latents off the
-            // cloner and stash them for an offline prefill step.
-            let latents = await tts.lastCloneLatents() ?? []
-            let data = latents.withUnsafeBufferPointer { Data(buffer: $0) }
-            try SafetensorsWriter.write([
-                .init(name: "mimi_latents", shape: [latents.count], dtype: .F32, data: data)
-            ], to: outURL)
-            print("Wrote \(outURL.path) (mimi latents; offline prefill still required)")
+        case .voiceOnly(_, let off, _): voiceOff = off
+        case .prefilled(_, let off, _, _, _): voiceOff = off
+        }
+        try await tts.saveVoice(handle, to: outURL)
+        let size = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
+        fputs(String(format: "Cloned voice in %.2fs; wrote %@ (%.1f MB; voiceOffset=%d)\n",
+                     cloneWall, outURL.path, Double(size) / (1024 * 1024), voiceOff),
+              stderr)
+
+        // Optional: run a short sample generation with the cloned voice so
+        // the caller can listen-check it.
+        if let sampleText = sampleText {
+            let outPath = sampleOutURL ?? URL(fileURLWithPath: "/tmp/cloned_test.wav")
+            fputs("Generating sample audio with cloned voice -> \(outPath.path)...\n", stderr)
+            var pcm = Data()
+            let tg0 = Date()
+            let stream = await tts.generate(text: sampleText, voice: handle)
+            for try await frame in stream {
+                pcm.append(frame)
+            }
+            let genWall = Date().timeIntervalSince(tg0)
+            try AudioStream.writeWAV(pcm, to: outPath)
+            let audioSec = Double(pcm.count / 2) / Double(PocketTTSArch.sampleRate)
+            fputs(String(format: "Wrote %@ (audio=%.2fs wall=%.2fs)\n",
+                         outPath.lastPathComponent, audioSec, genWall), stderr)
         }
     }
 

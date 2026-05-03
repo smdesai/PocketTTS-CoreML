@@ -102,6 +102,7 @@ done
 #    conversion scripts and must travel with the .mlmodelc bundles)
 cp Artifacts/en_alba_fp16/mimi_decoder.state_layout.json \
    Artifacts/en_alba_fp16/flow_lm_bos_emb.safetensors \
+   Artifacts/en_alba_fp16/speaker_proj.safetensors \
    Artifacts/en_alba_fp16_mlmodelc/
 ```
 
@@ -123,6 +124,7 @@ for m in text_conditioner flow_lm_main flow_lm_prefill flow_lm_flow \
 done
 cp Artifacts/es_fp16/mimi_decoder.state_layout.json \
    Artifacts/es_fp16/flow_lm_bos_emb.safetensors \
+   Artifacts/es_fp16/speaker_proj.safetensors \
    Artifacts/es_fp16_mlmodelc/
 ```
 
@@ -296,10 +298,21 @@ explicit wrappers.
 
 ### 4.3 Sidecar artifacts
 
-Three small files travel with the 6 `.mlpackage` / `.mlmodelc` bundles:
+Four small files travel with the 6 `.mlpackage` / `.mlmodelc` bundles:
 
 - **`flow_lm_bos_emb.safetensors`** — `fp32[32]` BOS vector for AR step 0.
   Per-language (the BOS is a learned parameter, not a constant).
+- **`speaker_proj.safetensors`** — two per-language parameters for
+  voice cloning stage 2:
+    - `speaker_proj`: `fp32[1024, 32]` learned linear that projects
+      Mimi latents (ldim=32) to the flow_lm transformer's d_model
+      (1024). Applied in Swift via `cblas_sgemm` after `mimi_encoder`
+      in the clone pipeline.
+    - `bos_before_voice` (optional): `fp32[1, 1, 1024]` prefix vector
+      prepended to the projected voice conditioning before
+      `flow_lm_prefill` is invoked. Present on configs with
+      `insert_bos_before_voice: true` (all 6 shipped languages).
+  Export via `python -m pockettts_coreml.convert.export_speaker_proj`.
 - **`mimi_decoder.state_layout.json`** — describes how to pack the
   `mimi_decoder` streaming state into a single fp16 blob. See
   `docs/mimi_state_layout.md`. 10 slots: 1 upsample_partial,
@@ -310,6 +323,43 @@ Three small files travel with the 6 `.mlpackage` / `.mlmodelc` bundles:
   (6 layers × 2 for K/V). Rank-5 exists because CoreML caps tensor
   rank at 5; the natural rank-6 `[6, 2, 1, 256, 16, 64]` had to be
   collapsed.
+
+### 4.4 Voice cloning pipeline (Swift runtime)
+
+The `pocket-tts-cli clone` command — and `PocketTTS.cloneVoice(from:)`
+in the Swift library — runs the two-stage clone entirely on device:
+
+1. **Stage 1: `mimi_encoder.mlpackage`** — reference 4-second waveform
+   (resampled to 24 kHz mono, padded/cropped to exactly 96 000 samples)
+   → `fp16[1, 32, 50]` Mimi latents.
+2. **Stage 2a: speaker projection** — `F.linear(latents^T, speaker_proj)`
+   → `fp16[1, 50, 1024]` conditioning, executed in Swift via
+   Accelerate's `cblas_sgemm` (no ML graph). Optionally prepend the
+   per-language `bos_before_voice` vector → `fp16[1, 51, 1024]`.
+3. **Stage 2b: `flow_lm_prefill.mlpackage`** — conditioning is padded
+   to `[1, 128, 1024]` and fed to the same prefill bundle text
+   prefill uses (with `startOffset=0`). Writes the voice KV cache at
+   slots `[0, 51)`.
+
+The resulting `VoiceHandle.voiceOnly(flowKVRank5, voiceOffset=51)` is
+then ready for `generate(text:voice:)`: the orchestrator runs its
+normal text-prefill path over the voice KV (writing to slots
+`[51, 51 + S_text)`) and then the AR loop.
+
+**Implementation notes.**
+
+- `mimi_encoder` output `MLMultiArray` uses padded/aligned strides
+  (observed strides `[2048, 64, 1]` on a `[1, 32, 50]` tensor — the
+  channel dim is padded from 50 to 64 for ANE alignment). Swift must
+  gather the latents respecting `strides`, not assume tight
+  row-major packing. `VoiceProjection.applySpeakerProjection` does
+  this correctly; callers of `MLMultiArray.dataPointer` on any
+  encoder output should follow the same pattern.
+- The flow_lm_prefill bundle is reused unchanged: voice conditioning
+  and text conditioning have the same shape
+  (`fp16[1, 128, 1024]` after padding) and the prefill bundle has
+  no special casing for which kind of conditioning it sees. Masks and
+  RoPE are constructed in Swift per-call based on `startOffset`.
 
 ---
 
@@ -676,11 +726,16 @@ pocketTTS-CoreML/
   compute. The Swift runtime resolves layer count at init from the
   loaded mlpackage — no code changes needed per language after the
   initial French 24L work.
-- **Voice cloning from user `.wav` in Swift:** stage 1 (mimi_encoder)
-  is wired; stage 2 (flow_lm prefill over the encoded latents to
-  produce the runtime KV) is not. The CLI `clone` command emits the
-  raw latents for offline post-processing. Real Swift-side cloning
-  needs ~1 day of work.
+- **Voice cloning from user `.wav` in Swift:** shipped. The
+  `pocket-tts-cli clone` command and `PocketTTS.cloneVoice(from:)` API
+  run the full two-stage pipeline (mimi_encoder → speaker projection →
+  flow_lm_prefill) entirely on device. See §4.4 for the pipeline and
+  §4.3 for the `speaker_proj.safetensors` sidecar. Speaker cosine
+  similarity vs the reference Python path: ~0.88 on 4 s of Alba
+  (Resemblyzer gate 0.85) — reference fp32 path on the same 4 s scores
+  ~0.89 vs the source wav. Voice quality is gated by fp16 roundoff in
+  `mimi_encoder` + the padded `[1, 128, 1024]` prefill input, not by
+  the Swift math.
 
 ### 9.2 Optional follow-ups (in priority order)
 
@@ -691,8 +746,11 @@ pocketTTS-CoreML/
    Only worth it if ship size matters; perf is already solved. Test
    required per-language (quantization may not hold across languages
    equally).
-3. **Voice cloning from `.wav`** in the Swift runtime (stage 2
-   prefill).
+3. **Re-export `mimi_encoder` with a longer static `T_audio`** (say
+   10 s → T_latent=126) to match the duration Kyutai's shipped
+   voices use. Would boost cloned-voice similarity closer to the
+   pre-exported ceiling without sacrificing real-time speed
+   (cloning is a one-shot op).
 4. **Background audio testing.** `UIBackgroundModes: [audio]` is
    declared; actual background-playback behavior under iOS 18.5's
    background scheduling hasn't been measured.

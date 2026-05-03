@@ -43,6 +43,12 @@ required_artifacts=(
     "flow_lm_bos_emb.safetensors"
 )
 
+# Sidecars that travel with the bundle when present but aren't strictly
+# required for generation (voice cloning stage 2 only).
+optional_artifacts=(
+    "speaker_proj.safetensors"
+)
+
 # Per-language source paths. Extend this map to add more languages.
 #   <id>|<artifacts_src>|<voices_src>|<tokenizer_src>
 LANG_SPECS=(
@@ -94,9 +100,17 @@ for spec in "${LANG_SPECS[@]}"; do
     echo "  [$LANG_ID] populating $LANG_DIR"
     mkdir -p "$LANG_DIR/Artifacts" "$LANG_DIR/Voices"
 
-    # Artifacts + sidecars (6 mlmodelc + 2 sidecars).
+    # Artifacts + sidecars (6 mlmodelc + 2 sidecars + optional clone sidecar).
     for item in "${required_artifacts[@]}"; do
         cp -R "$ART_SRC/$item" "$LANG_DIR/Artifacts/$item"
+    done
+    for item in "${optional_artifacts[@]}"; do
+        if [[ -e "$ART_SRC/$item" ]]; then
+            cp -R "$ART_SRC/$item" "$LANG_DIR/Artifacts/$item"
+        else
+            echo "  [$LANG_ID] note: optional artifact $item missing — " \
+                 "voice cloning will be unavailable for this language"
+        fi
     done
 
     # Tokenizer.
