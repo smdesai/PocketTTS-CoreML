@@ -31,6 +31,29 @@ def _load_ml(path: Path, compute_units: str = "CPU_ONLY"):
     return MLModel(str(path), compute_units=cu)
 
 
+def _resolve_flow_num_layers(language: str) -> int:
+    """Read num_layers from the per-language reference YAML config.
+
+    We parse the YAML directly rather than loading the full TTSModel so
+    the lookup is cheap (no weight download, no torch tensors). The
+    config path mirrors `pocket_tts.models.tts_model.TTSModel.load_model`.
+    """
+    import yaml
+    cfg_path = (
+        _REPO_ROOT / "pockettts_coreml" / "reference"
+        / "pocket_tts" / "config" / f"{language}.yaml"
+    )
+    if not cfg_path.exists():
+        # Unknown language: fall back to 6 (the shipped 6L default).
+        # Callers that hit this path and need a different layer count
+        # should add a config file under pocket_tts/config/.
+        LOGGER.warning("language config not found: %s; defaulting FLOW_L=6", cfg_path)
+        return 6
+    with cfg_path.open("r") as f:
+        cfg = yaml.safe_load(f)
+    return int(cfg["flow_lm"]["transformer"]["num_layers"])
+
+
 class CoreMLGenerator:
     """Drive the reference generation loop with CoreML predict().
 
@@ -38,12 +61,16 @@ class CoreMLGenerator:
     `noise_clamp=None`, `lsd_decode_steps=1`, `seed=42`).
 
     Fixed topology:
-      - FlowLM KV-cache `s_cap=256`, 6 layers, 16 heads, head_dim=64.
+      - FlowLM KV-cache `s_cap=256`, num_layers per language config
+        (6 for english/spanish/german/italian/portuguese; 24 for
+        french_24l), 16 heads, head_dim=64.
       - Mimi decoder KV-cache `s_cap=256`, 2 layers, 8 heads, head_dim=64.
       - text prefix padded to 128 (text_conditioner graph is (1, 128)).
     """
 
     # Architecture constants (must match the converted .mlpackage signatures).
+    # FLOW_L is resolved from the language config at __init__ time
+    # (overrides the class default).
     S_CAP_FLOW = 256
     FLOW_L = 6
     FLOW_H = 16
@@ -73,6 +100,9 @@ class CoreMLGenerator:
     ):
         self.artifacts_dir = Path(artifacts_dir)
         self.language = language
+        # Resolve per-language num_layers from the reference YAML config.
+        # This is a tiny YAML read (no weights loaded) so it stays cheap.
+        self.FLOW_L = _resolve_flow_num_layers(language)
         # Lazy-load mlmodels.
         self._text_cond = None
         self._flow_main = None

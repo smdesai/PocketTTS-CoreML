@@ -26,8 +26,8 @@ public struct VoiceEntry: Identifiable, Hashable, Sendable {
     public let displayName: String
     /// Absolute URL inside the app bundle.
     public let url: URL
-    /// Language code ("en", "es", "de", "it", "pt"). Empty for the legacy
-    /// single-language bundle.
+    /// Language code ("en", "es", "de", "it", "pt", "fr"). Empty for the
+    /// legacy single-language bundle.
     public let language: String
 }
 
@@ -118,14 +118,16 @@ public enum VoiceCatalog {
 /// which is a project-internal convention (matches the reference config file
 /// names: `english`, `spanish`) rather than a standard locale code.
 public struct Language: Identifiable, Hashable, Sendable {
-    /// Folder id ("en", "es", "de", "it", "pt"). Used as the
+    /// Folder id ("en", "es", "de", "it", "pt", "fr"). Used as the
     /// `Resources/Languages/<id>/` path.
     public let id: String
     /// Reference config name used by conversion scripts ("english",
-    /// "spanish", "german", "italian", "portuguese").
+    /// "spanish", "german", "italian", "portuguese", "french_24l").
+    /// Note: French only ships as the 24-layer variant (`french_24l`);
+    /// there is no 6-layer French config.
     public let configName: String
     /// Human-readable display name ("English", "Spanish", "German",
-    /// "Italian", "Portuguese").
+    /// "Italian", "Portuguese", "French").
     public let displayName: String
     /// Default demo paragraph in this language. Used as initial text at
     /// launch and when the user switches languages (only overwrites the
@@ -182,6 +184,14 @@ public struct Language: Identifiable, Hashable, Sendable {
                 Pocket TTS é um modelo leve de conversão de texto em fala. \
                 Funciona inteiramente no seu iPhone, transmitindo áudio enquanto a voz fala. \
                 Toque em Stream para ouvir como ele divide um parágrafo longo em frases.
+                """
+        ),
+        Language(
+            id: "fr", configName: "french_24l", displayName: "French",
+            defaultPrompt: """
+                Pocket TTS est un modèle léger de synthèse vocale. \
+                Il fonctionne entièrement sur votre iPhone, diffusant l'audio pendant que la voix parle. \
+                Appuyez sur Stream pour l'entendre diviser un long paragraphe en phrases.
                 """
         ),
     ]

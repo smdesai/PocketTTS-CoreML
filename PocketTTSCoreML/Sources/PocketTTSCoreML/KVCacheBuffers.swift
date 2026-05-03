@@ -1,12 +1,23 @@
 import Foundation
 import CoreML
 
-/// Architecture constants for the English PocketTTS CoreML bundle.
+/// Architecture constants for the PocketTTS CoreML bundle.
 /// Must match `CoreMLGenerator` in `pockettts_coreml/e2e/generator.py`.
+///
+/// NOTE: `flowLayers` is mutable because the 24-layer (`french_24l`) variant
+/// has 24 layers while the 6-layer variants (english, spanish, german,
+/// italian, portuguese) have 6. `PocketTTS.init` calls
+/// `PocketTTSArch.configureFlowLayers(from:)` at model-load time to set
+/// the right value based on the loaded `flow_lm_main` input shape. The
+/// default of 6 is correct for the majority of shipped languages.
 public enum PocketTTSArch {
     // FlowLM main transformer.
     public static let flowSCap: Int     = 256
-    public static let flowLayers: Int   = 6
+    // nonisolated(unsafe) is appropriate here: the value is set exactly
+    // once by PocketTTS.init (before the actor returns) and read-only
+    // thereafter. The ordering is enforced by configureFlowLayers being
+    // called before any KV allocation / voice load.
+    public nonisolated(unsafe) static var flowLayers: Int   = 6
     public static let flowHeads: Int    = 16
     public static let flowHeadDim: Int  = 64
     public static let flowHalfDim: Int  = 32   // half of head_dim (RoPE table width)
@@ -31,6 +42,19 @@ public enum PocketTTSArch {
     public static let defaultTemperature: Float = 0.7
     public static let defaultEosThreshold: Float = -4.0
     public static let defaultFramesAfterEos: Int = 2
+
+    /// Resolve `flowLayers` from a loaded flow_lm_main (or flow_lm_prefill)
+    /// MLModel by inspecting the `kv_cache_in` input's expected shape.
+    /// Expected shape is `[2*L, 1, S_cap, H, D]`. Called by `PocketTTS.init`.
+    public static func configureFlowLayers(from flowMain: MLModel) {
+        let desc = flowMain.modelDescription.inputDescriptionsByName
+        guard let kv = desc["kv_cache_in"] ?? desc["kv_cache"],
+              let shape = kv.multiArrayConstraint?.shape,
+              let dim0 = shape.first?.intValue
+        else { return }  // leave default (6) if shape can't be read
+        // dim0 is 2*L; L = 6 for en/es/de/it/pt, 24 for french_24l.
+        flowLayers = dim0 / 2
+    }
 }
 
 /// Pre-allocated MLMultiArray pool for flow_lm_main's KV cache.

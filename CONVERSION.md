@@ -6,12 +6,17 @@ real-time TTS. Covers the production conversion pipeline, every
 significant bug encountered, and lessons learned that would bite anyone
 porting a similar model.
 
-**Status:** English, Spanish, German, Italian, and Portuguese all ship
-on device. All five use the identical 6-layer 1024d architecture
-(no patch changes per language). iPhone 17 Pro A19 Pro (measured on
+**Status:** English, Spanish, German, Italian, Portuguese, and French
+all ship on device. The first five use the identical 6-layer 1024d
+architecture and share ~356 MB per-language bundles. French ships as
+the 24-layer `french_24l` variant (the only variant Kyutai published
+for French) and has ~4× the transformer footprint: per-language
+bundle ~1.05 GB, voice `.safetensors` ~25 MB each (vs ~7 MB for 6L),
+per-step compute ~4× slower. iPhone 17 Pro A19 Pro (measured on
 English): warm RTF 0.09 (7.44× realtime), speaker similarity 0.98 vs
 Python reference, thermal `.nominal`, 46.9% ANE residency on
-`flow_lm_main`.
+`flow_lm_main`. French device RTF should be measured separately;
+theoretical upper bound is ~1/4 of the 6L RTFx.
 
 ---
 
@@ -99,11 +104,33 @@ cp Artifacts/es_fp16/mimi_decoder.state_layout.json \
    Artifacts/es_fp16_mlmodelc/
 ```
 
-French / Italian / Portuguese / German all have 12-layer variants with
-identical architecture to English — same pipeline, just change
-`--language`. **French 24L** (`french_24l` in the reference config)
-has 4× the transformer weight footprint; conversion works but ship
-cost is higher and RTF will drop.
+German / Italian / Portuguese all have 6-layer variants with identical
+architecture to English — same pipeline, just change `--language`.
+**French** only ships as the 24-layer variant (`french_24l` in the
+reference config). Use the same `--all` pipeline (`--language
+french_24l --out Artifacts/fr_fp16`); the conversion code has no
+hardcoded layer count (everything is driven from the YAML config).
+Expect:
+
+- Conversion wall time ~30-45 min (vs ~15 min for 6L) — 4× as many
+  softmax/layernorm ops means the fp32-softmax MIL pass walks 4× as
+  many targets.
+- `flow_lm_main.mlmodelc` ~550 MB (vs 144 MB for 6L).
+- `flow_lm_prefill.mlmodelc` ~500 MB (vs 126 MB).
+- Voice `.safetensors` ~25 MB each (vs ~7 MB) because the rank-5 KV
+  is `[48, 1, 256, 16, 64]` instead of `[12, 1, 256, 16, 64]`.
+- Total per-language bundle ~1.05 GB (vs 356 MB for 6L).
+- Python-side verify per forward ~30 s (vs ~3 s for 6L on Mac).
+- Swift/ANE device RTFx drops proportionally; measure on device.
+
+**Swift runtime note:** `PocketTTSArch.flowLayers` in
+`PocketTTSCoreML/Sources/PocketTTSCoreML/KVCacheBuffers.swift` is
+currently hardcoded to `6`. French voices + artifacts are produced
+correctly by the Python pipeline, but the Swift `FlowKVCache` /
+`VoiceLoader` / `Orchestrator` need to resolve `flowLayers` from
+the loaded mlpackage (or from a per-language config) before French
+will run on device. Track this as follow-up work; it does not affect
+the artifacts produced here.
 
 ### 2.4 Stage resources into the iOS demo app
 
@@ -588,13 +615,19 @@ pocketTTS-CoreML/
   app shipping these weights to the App Store needs separate
   commercial terms from Kyutai. Your MIT-licensed code is fine; the
   weights aren't.
-- **No `_24l` variants shipped yet.** French (24-layer) would 4× the
-  transformer weight budget (~500 MB vs 144 MB for flow_lm_main)
-  and reduce RTFx proportionally. English + Spanish + German + Italian
-  + Portuguese are all 12-layer 1024d — same architecture, same
-  patches, same ~356 MB footprint per language. Each new 12L language
-  is ~15 min conversion + ~2 min mlmodelc compile, plus a verify
-  script run for parity against the Python reference.
+- **French is 24-layer; Swift runtime still assumes 6L.** The Python
+  conversion pipeline produces correct French artifacts, but the
+  Swift package (`PocketTTSArch.flowLayers` constant and downstream
+  KVCacheBuffers / VoiceLoader / Orchestrator code) hardcodes 6
+  layers. French voices are ~25 MB each (vs ~7 MB for 6L) because
+  their rank-5 KV is `[48,1,256,16,64]`. Before French can run on
+  device, the Swift runtime needs `flowLayers` to be loaded from
+  per-language metadata (e.g. infer from the voice `.safetensors`
+  flow_kv_rank5 shape at load time). English + Spanish + German +
+  Italian + Portuguese are all 6-layer 1024d — same architecture,
+  same patches, same ~356 MB footprint per language. Each new 6L
+  language is ~15 min conversion + ~2 min mlmodelc compile, plus a
+  verify script run for parity against the Python reference.
 - **Voice cloning from user `.wav` in Swift:** stage 1 (mimi_encoder)
   is wired; stage 2 (flow_lm prefill over the encoded latents to
   produce the runtime KV) is not. The CLI `clone` command emits the

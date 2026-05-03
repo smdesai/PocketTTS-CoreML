@@ -64,6 +64,12 @@ public actor PocketTTS {
         let flowFlow = try await Self.loadCompiled(flowFlowURL, config: cfg)
         let mimiDec  = try await Self.loadCompiled(mimiDecURL,  config: cfg)
 
+        // Resolve layer count from the loaded flow_lm_main input shape so
+        // that 24L french_24l and 6L en/es/de/it/pt all work. Must happen
+        // BEFORE anything that reads PocketTTSArch.flowLayers (voice load,
+        // KV alloc, prefill mask builders).
+        PocketTTSArch.configureFlowLayers(from: flowMain)
+
         let layoutURL = artifactsBundle.appendingPathComponent("mimi_decoder.state_layout.json")
         let layout = try MimiStateLayout.load(from: layoutURL)
 
