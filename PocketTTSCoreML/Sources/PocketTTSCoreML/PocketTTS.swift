@@ -37,6 +37,13 @@ public actor PocketTTS {
 
     private let tokenizer: Tokenizer
     private let orchestrator: Orchestrator
+    /// Lazy voice cloner — created on the FIRST cloneVoice() call and
+    /// cached for all subsequent clones. mimi_encoder loading + ANE
+    /// program prep costs ~10-25s on iPhone A19 Pro for the 24L French
+    /// bundle (~5s for 6L bundles), so we don't preload at PocketTTS
+    /// init — users who never clone don't pay the price. Second and
+    /// later clones in the same session reuse the warm encoder.
+    private var voiceCloner: VoiceCloner?
 
     public init(
         artifactsBundle: URL,
@@ -112,6 +119,11 @@ public actor PocketTTS {
             defaultBosEmb: defaultBos,
             speakerProjection: speakerProj
         ))
+
+        // mimi_encoder is loaded lazily on first cloneVoice. Preloading
+        // it here adds 10-25s to app startup which is unacceptable for
+        // users who never clone.
+        self.voiceCloner = nil
     }
 
     // MARK: - Private model loading
@@ -173,6 +185,17 @@ public actor PocketTTS {
     ///   - `flow_lm_prefill.mlpackage`
     ///   - `speaker_proj.safetensors`  (see `export_speaker_proj.py`)
     public func cloneVoice(from audioURL: URL) async throws -> VoiceHandle {
+        let cloner = try await ensureVoiceCloner()
+        return try await cloner.clone(from: audioURL)
+    }
+
+    /// Build (and cache) the VoiceCloner on first use. The first call
+    /// pays the ~5-25s mimi_encoder MLModel init + ANE program prep
+    /// cost (6L ~5s, 24L french ~25s on A19 Pro). Subsequent calls
+    /// return the cached instance so the encoder stays warm.
+    private func ensureVoiceCloner() async throws -> VoiceCloner {
+        if let cached = voiceCloner { return cached }
+
         guard let speakerProj = orchestrator.models.speakerProjection else {
             throw PocketTTSLoadError.modelNotFound(
                 "speaker_proj.safetensors not found in \(artifactsBundle.path); "
@@ -181,14 +204,38 @@ public actor PocketTTS {
                 + "--language <lang> --out <artifacts_dir>`"
             )
         }
-        let encoderURL = artifactsBundle.appendingPathComponent("mimi_encoder.mlpackage")
-        let cloner = try await VoiceCloner(
-            mimiEncoderURL: encoderURL,
+        guard let encoderURL = Self.resolveArtifact(artifactsBundle, stem: "mimi_encoder") else {
+            throw PocketTTSLoadError.modelNotFound(
+                "mimi_encoder not present in \(artifactsBundle.path); "
+                + "voice cloning requires it."
+            )
+        }
+
+        // mimi_encoder is heavy CPU-fallback (SEANet strides 6/5/4 inverse +
+        // depthwise ConvTrUpsample1d are ANE-unsupported per Phase 2+3 notes).
+        // Loading it with .cpuAndNeuralEngine makes iOS CoreML attempt an
+        // ANE program compile that loops on unsupported ops and can hang
+        // indefinitely. Force .cpuOnly — the encoder was measured at
+        // ~70 ms/predict on CPU anyway, and clones are off the hot path.
+        let cfg = MLModelConfiguration()
+        cfg.computeUnits = .cpuOnly
+
+        let t0 = Date()
+        FileHandle.standardError.write(Data(
+            "[clone-init] loading mimi_encoder from \(encoderURL.lastPathComponent) (computeUnits=.cpuOnly)\n".utf8
+        ))
+        let encoder = try await Self.loadCompiled(encoderURL, config: cfg)
+        FileHandle.standardError.write(Data(
+            String(format: "[clone-init] mimi_encoder MLModel ready in %.2fs\n",
+                   Date().timeIntervalSince(t0)).utf8
+        ))
+        let cloner = VoiceCloner(
+            encoder: encoder,
             orchestrator: orchestrator,
-            speakerProjection: speakerProj,
-            computeUnits: computeUnits
+            speakerProjection: speakerProj
         )
-        return try await cloner.clone(from: audioURL)
+        self.voiceCloner = cloner
+        return cloner
     }
 
     /// Encode text to SentencePiece ids (exposed for tests / parity checks).
