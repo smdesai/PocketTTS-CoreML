@@ -6,9 +6,12 @@ real-time TTS. Covers the production conversion pipeline, every
 significant bug encountered, and lessons learned that would bite anyone
 porting a similar model.
 
-**Status:** English + Spanish ship on device. iPhone 17 Pro A19 Pro:
-warm RTF 0.09 (7.44× realtime), speaker similarity 0.98 vs Python
-reference, thermal `.nominal`, 46.9% ANE residency on `flow_lm_main`.
+**Status:** English, Spanish, German, Italian, and Portuguese all ship
+on device. All five use the identical 6-layer 1024d architecture
+(no patch changes per language). iPhone 17 Pro A19 Pro (measured on
+English): warm RTF 0.09 (7.44× realtime), speaker similarity 0.98 vs
+Python reference, thermal `.nominal`, 46.9% ANE residency on
+`flow_lm_main`.
 
 ---
 
@@ -587,8 +590,11 @@ pocketTTS-CoreML/
   weights aren't.
 - **No `_24l` variants shipped yet.** French (24-layer) would 4× the
   transformer weight budget (~500 MB vs 144 MB for flow_lm_main)
-  and reduce RTFx proportionally. Spanish (12-layer) is the same as
-  English — no headroom cost.
+  and reduce RTFx proportionally. English + Spanish + German + Italian
+  + Portuguese are all 12-layer 1024d — same architecture, same
+  patches, same ~356 MB footprint per language. Each new 12L language
+  is ~15 min conversion + ~2 min mlmodelc compile, plus a verify
+  script run for parity against the Python reference.
 - **Voice cloning from user `.wav` in Swift:** stage 1 (mimi_encoder)
   is wired; stage 2 (flow_lm prefill over the encoded latents to
   produce the runtime KV) is not. The CLI `clone` command emits the

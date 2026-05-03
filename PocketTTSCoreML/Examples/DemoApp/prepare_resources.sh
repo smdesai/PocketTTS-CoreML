@@ -20,7 +20,8 @@
 #           ├── Voices/
 #           └── tokenizer.model
 #
-# Run from DemoApp/ (this directory). Total payload ~980 MB (2 languages).
+# Run from DemoApp/ (this directory). Total payload scales linearly with
+# language count (~490 MB per language: 356 MB artifacts + ~130 MB voices).
 
 set -euo pipefail
 
@@ -45,6 +46,9 @@ required_artifacts=(
 LANG_SPECS=(
     "en|$REPO/Artifacts/en_alba_fp16_mlmodelc|$REPO/voices|$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model"
     "es|$REPO/Artifacts/es_fp16_mlmodelc|$REPO/voices_spanish|$REPO/voices_spanish/tokenizer.model"
+    "de|$REPO/Artifacts/de_fp16_mlmodelc|$REPO/voices_german|$REPO/voices_german/tokenizer.model"
+    "it|$REPO/Artifacts/it_fp16_mlmodelc|$REPO/voices_italian|$REPO/voices_italian/tokenizer.model"
+    "pt|$REPO/Artifacts/pt_fp16_mlmodelc|$REPO/voices_portuguese|$REPO/voices_portuguese/tokenizer.model"
 )
 
 # ------------------------------------------------------------------
