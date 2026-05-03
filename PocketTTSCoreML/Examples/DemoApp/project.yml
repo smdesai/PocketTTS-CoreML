@@ -30,15 +30,12 @@ targets:
         excludes:
           - "Resources"          # included below explicitly
           - "Info.plist"         # declared via info.path
-      # Folder references preserve the .mlmodelc / Voices directory layouts
-      # exactly as copied by prepare_resources.sh.
-      - path: DemoApp/Resources/Artifacts
+      # Per-language resources. prepare_resources.sh builds
+      # Resources/Languages/<id>/{Artifacts,Voices,tokenizer.model} for every
+      # supported language; a single top-level folder reference picks them
+      # all up and preserves the .mlmodelc directory layouts exactly.
+      - path: DemoApp/Resources/Languages
         type: folder
-        buildPhase: resources
-      - path: DemoApp/Resources/Voices
-        type: folder
-        buildPhase: resources
-      - path: DemoApp/Resources/tokenizer.model
         buildPhase: resources
     dependencies:
       - package: PocketTTSCoreML
@@ -67,3 +64,26 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: "YES"
         SWIFT_VERSION: "6.0"
+
+# Declare the scheme explicitly so `xcodegen generate` re-creates
+# xcshareddata/xcschemes/DemoApp.xcscheme instead of wiping the
+# directory. Without this block, xcodegen silently deletes the
+# scheme file whenever it regenerates the project (observed
+# 2026-05-02 during language-picker work).
+schemes:
+  DemoApp:
+    build:
+      parallelizeBuild: true
+      buildImplicitDependencies: true
+      targets:
+        DemoApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

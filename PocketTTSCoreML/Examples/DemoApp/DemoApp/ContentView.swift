@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var playerBinder: PlayerBinder
     @State private var shareItem: ShareItem? = nil
     @State private var showVoiceSheet: Bool = false
+    @State private var showLanguageSheet: Bool = false
 
     init() {
         let vm = TTSViewModel()
@@ -32,6 +33,7 @@ struct ContentView: View {
                             .font(.system(size: 34, weight: .bold))
                             .padding(.top, 4)
 
+                        languageCard
                         voiceCard
                         textCard
                         statusCard
@@ -68,12 +70,67 @@ struct ContentView: View {
         )
     }
 
+    // MARK: - Language card
+
+    private var languageCard: some View {
+        Button {
+            guard !viewModel.isGenerating,
+                  !viewModel.isStreaming,
+                  !viewModel.isSwitchingLanguage else { return }
+            dismissKeyboard()
+            showLanguageSheet = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.white.opacity(0.08)).frame(width: 28, height: 28)
+                    Image(systemName: "globe")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                Text("Language")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(viewModel.selectedLanguage.displayName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(cardBackground)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            viewModel.isGenerating
+            || viewModel.isStreaming
+            || viewModel.isSwitchingLanguage
+        )
+        .sheet(isPresented: $showLanguageSheet) {
+            LanguageListSheet(
+                languages: Language.all,
+                selectedID: viewModel.selectedLanguage.id,
+                onPick: { language in
+                    showLanguageSheet = false
+                    // Async switch on the MainActor-bound view model.
+                    Task { await viewModel.switchLanguage(to: language) }
+                },
+                onCancel: { showLanguageSheet = false }
+            )
+        }
+    }
+
     // MARK: - Voice card
 
     private var voiceCard: some View {
         Button {
             guard !viewModel.isGenerating,
                   !viewModel.isStreaming,
+                  !viewModel.isSwitchingLanguage,
                   !viewModel.voices.isEmpty else { return }
             dismissKeyboard()
             showVoiceSheet = true
@@ -103,7 +160,12 @@ struct ContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.isGenerating || viewModel.isStreaming || viewModel.voices.isEmpty)
+        .disabled(
+            viewModel.isGenerating
+            || viewModel.isStreaming
+            || viewModel.isSwitchingLanguage
+            || viewModel.voices.isEmpty
+        )
         .sheet(isPresented: $showVoiceSheet) {
             VoiceListSheet(
                 voices: viewModel.voices,
@@ -300,6 +362,7 @@ struct ContentView: View {
                 enabled: viewModel.isReady
                          && !viewModel.isGenerating
                          && !viewModel.isStreaming
+                         && !viewModel.isSwitchingLanguage
             ) {
                 Task { await viewModel.generate() }
             }
@@ -311,6 +374,7 @@ struct ContentView: View {
                 enabled: viewModel.isReady
                          && !viewModel.isGenerating
                          && !viewModel.isStreaming
+                         && !viewModel.isSwitchingLanguage
             ) {
                 Task { await viewModel.stream() }
             }
@@ -380,6 +444,51 @@ struct ContentView: View {
 }
 
 // MARK: - Share sheet (UIActivityViewController wrapper)
+
+// MARK: - Language picker sheet
+
+/// Sheet with one row per bundled language. Same visual vocabulary as
+/// VoiceListSheet so the picker feels familiar.
+private struct LanguageListSheet: View {
+    let languages: [Language]
+    let selectedID: String
+    let onPick: (Language) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(languages) { language in
+                    Button {
+                        onPick(language)
+                    } label: {
+                        HStack {
+                            Text(language.displayName)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if language.id == selectedID {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("Select language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", action: onCancel)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+}
 
 // MARK: - Voice picker sheet
 

@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 #
-# Physically copy model artifacts + 21 voices + tokenizer into
-# DemoApp/DemoApp/Resources/. Unlike iOSBenchmark's symlink approach,
-# Xcode folder references for .mlmodelc don't always follow symlinks
-# reliably during device builds — so we use real copies here. Re-runnable;
-# destination trees are wiped then re-populated.
+# Physically copy model artifacts + voices + tokenizer for every supported
+# language into DemoApp/DemoApp/Resources/Languages/<id>/. Unlike
+# iOSBenchmark's symlink approach, Xcode folder references for .mlmodelc
+# don't always follow symlinks reliably during device builds — so we use
+# real copies here. Re-runnable; destination trees are wiped then
+# re-populated.
 #
-# Run from DemoApp/ (this directory). Total payload is ~490 MB.
+# Layout produced:
+#
+#   Resources/
+#   └── Languages/
+#       ├── en/
+#       │   ├── Artifacts/    (6 .mlmodelc + 2 sidecars)
+#       │   ├── Voices/       (21 .safetensors)
+#       │   └── tokenizer.model
+#       └── es/
+#           ├── Artifacts/
+#           ├── Voices/
+#           └── tokenizer.model
+#
+# Run from DemoApp/ (this directory). Total payload ~980 MB (2 languages).
 
 set -euo pipefail
 
@@ -14,11 +28,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 RES="$HERE/DemoApp/Resources"
 
-ARTIFACTS_SRC="$REPO/Artifacts/en_alba_fp16_mlmodelc"
-VOICES_SRC="$REPO/voices"
-TOKENIZER_SRC="$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model"
-
-# Sanity-check all sources before touching anything.
+# Required artifact items (names are shared across languages).
 required_artifacts=(
     "flow_lm_main.mlmodelc"
     "flow_lm_flow.mlmodelc"
@@ -29,48 +39,80 @@ required_artifacts=(
     "mimi_decoder.state_layout.json"
     "flow_lm_bos_emb.safetensors"
 )
-for item in "${required_artifacts[@]}"; do
-    if [[ ! -e "$ARTIFACTS_SRC/$item" ]]; then
-        echo "ERROR: missing artifact: $ARTIFACTS_SRC/$item" >&2
+
+# Per-language source paths. Extend this map to add more languages.
+#   <id>|<artifacts_src>|<voices_src>|<tokenizer_src>
+LANG_SPECS=(
+    "en|$REPO/Artifacts/en_alba_fp16_mlmodelc|$REPO/voices|$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model"
+    "es|$REPO/Artifacts/es_fp16_mlmodelc|$REPO/voices_spanish|$REPO/voices_spanish/tokenizer.model"
+)
+
+# ------------------------------------------------------------------
+# 1) Sanity-check every source for every language before touching the
+#    destination. Fail fast with a specific message.
+# ------------------------------------------------------------------
+for spec in "${LANG_SPECS[@]}"; do
+    IFS='|' read -r LANG_ID ART_SRC VOICES_SRC TOKENIZER_SRC <<< "$spec"
+    echo "checking sources for $LANG_ID ..."
+    for item in "${required_artifacts[@]}"; do
+        if [[ ! -e "$ART_SRC/$item" ]]; then
+            echo "ERROR [$LANG_ID]: missing artifact: $ART_SRC/$item" >&2
+            exit 1
+        fi
+    done
+    if [[ ! -d "$VOICES_SRC" ]]; then
+        echo "ERROR [$LANG_ID]: missing voices dir: $VOICES_SRC" >&2
+        exit 1
+    fi
+    if [[ ! -f "$TOKENIZER_SRC" ]]; then
+        echo "ERROR [$LANG_ID]: missing tokenizer: $TOKENIZER_SRC" >&2
         exit 1
     fi
 done
-if [[ ! -d "$VOICES_SRC" ]]; then
-    echo "ERROR: missing voices dir: $VOICES_SRC" >&2
-    exit 1
-fi
-if [[ ! -f "$TOKENIZER_SRC" ]]; then
-    echo "ERROR: missing tokenizer: $TOKENIZER_SRC" >&2
-    exit 1
-fi
 
-echo "Seeding $RES ..."
-# Wipe and rebuild the resources dirs so stale bundles don't leak in.
-rm -rf "$RES/Artifacts" "$RES/Voices"
-mkdir -p "$RES/Artifacts" "$RES/Voices"
+# ------------------------------------------------------------------
+# 2) Wipe Resources/Languages entirely and rebuild from sources.
+#    Also wipe the legacy flat Artifacts/Voices/tokenizer.model if they
+#    exist from a prior single-language layout.
+# ------------------------------------------------------------------
+echo "seeding $RES ..."
+rm -rf "$RES/Languages"
+rm -rf "$RES/Artifacts" "$RES/Voices" "$RES/tokenizer.model"
+mkdir -p "$RES/Languages"
 
-echo "  copying 6 .mlmodelc bundles + sidecars..."
-for item in "${required_artifacts[@]}"; do
-    cp -R "$ARTIFACTS_SRC/$item" "$RES/Artifacts/$item"
+for spec in "${LANG_SPECS[@]}"; do
+    IFS='|' read -r LANG_ID ART_SRC VOICES_SRC TOKENIZER_SRC <<< "$spec"
+
+    LANG_DIR="$RES/Languages/$LANG_ID"
+    echo "  [$LANG_ID] populating $LANG_DIR"
+    mkdir -p "$LANG_DIR/Artifacts" "$LANG_DIR/Voices"
+
+    # Artifacts + sidecars (6 mlmodelc + 2 sidecars).
+    for item in "${required_artifacts[@]}"; do
+        cp -R "$ART_SRC/$item" "$LANG_DIR/Artifacts/$item"
+    done
+
+    # Tokenizer.
+    cp "$TOKENIZER_SRC" "$LANG_DIR/tokenizer.model"
+
+    # Voices.
+    voice_count=0
+    shopt -s nullglob
+    for v in "$VOICES_SRC"/*.safetensors; do
+        # Skip any accidentally-placed tokenizer.model or other files;
+        # only .safetensors voice embeddings are copied.
+        cp "$v" "$LANG_DIR/Voices/$(basename "$v")"
+        voice_count=$((voice_count + 1))
+    done
+    shopt -u nullglob
+
+    if [[ $voice_count -eq 0 ]]; then
+        echo "ERROR [$LANG_ID]: no voice .safetensors files in $VOICES_SRC" >&2
+        exit 1
+    fi
+    echo "    -> $voice_count voices copied"
 done
-
-echo "  copying tokenizer.model..."
-cp "$TOKENIZER_SRC" "$RES/tokenizer.model"
-
-echo "  copying voice safetensors..."
-voice_count=0
-shopt -s nullglob
-for v in "$VOICES_SRC"/*.safetensors; do
-    cp "$v" "$RES/Voices/$(basename "$v")"
-    voice_count=$((voice_count + 1))
-done
-shopt -u nullglob
-
-if [[ $voice_count -eq 0 ]]; then
-    echo "ERROR: no voice .safetensors files found in $VOICES_SRC" >&2
-    exit 1
-fi
 
 size_mb=$(du -sm "$RES" | awk '{print $1}')
-echo "Done. Copied $voice_count voices. Resources total: ${size_mb} MB."
-echo "Next: xcodegen generate  (from $HERE)"
+echo "done. Resources total: ${size_mb} MB."
+echo "next: xcodegen generate  (from $HERE)"

@@ -7,13 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		014E617951F96A061BBDBE92 /* Voices in Resources */ = {isa = PBXBuildFile; fileRef = B7F2FCCB1037A8AA28689414 /* Voices */; };
-		700A6FE594DA51BC0DD0A773 /* tokenizer.model in Resources */ = {isa = PBXBuildFile; fileRef = E1969AE99439F4294D765E2A /* tokenizer.model */; };
 		72B2729E46166DC257EAE4A5 /* TTSViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D88526D45AC51AD780564F8 /* TTSViewModel.swift */; };
 		7747C7646C100FF7FA2C55F9 /* DemoAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E03DECCC43EE647A543BD618 /* DemoAppApp.swift */; };
 		8AEE08FED45C2CB6798B1D88 /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */; };
 		AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C558F4562A2F0D78FC9C88A8 /* ContentView.swift */; };
-		BF3A4671AD9DCCDFE8059353 /* Artifacts in Resources */ = {isa = PBXBuildFile; fileRef = B9F7A1BE86A6A400B41A640F /* Artifacts */; };
+		AC60E3310793FFCE1C4A3B5F /* Languages in Resources */ = {isa = PBXBuildFile; fileRef = B07B05E7EBAE6A1C049E692F /* Languages */; };
 		DFA0256A139D0EF6D51130AF /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 5BFA6417318D8A26B3B9B3E5 /* PocketTTSCoreML */; };
 		FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95338D23F36161FB31B3904D /* StreamingPlayer.swift */; };
 /* End PBXBuildFile section */
@@ -22,14 +20,11 @@
 		154FAE636D5E23DF886F3868 /* DemoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		456F6EFC970B342011BB0F07 /* PocketTTSCoreML */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PocketTTSCoreML; path = ../..; sourceTree = SOURCE_ROOT; };
 		5D88526D45AC51AD780564F8 /* TTSViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSViewModel.swift; sourceTree = "<group>"; };
-		6598F44AECA129A4C6BFEFA3 /* VoicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePickerView.swift; sourceTree = "<group>"; };
 		8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCatalog.swift; sourceTree = "<group>"; };
 		95338D23F36161FB31B3904D /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
-		B7F2FCCB1037A8AA28689414 /* Voices */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Voices; path = DemoApp/Resources/Voices; sourceTree = SOURCE_ROOT; };
-		B9F7A1BE86A6A400B41A640F /* Artifacts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Artifacts; path = DemoApp/Resources/Artifacts; sourceTree = SOURCE_ROOT; };
+		B07B05E7EBAE6A1C049E692F /* Languages */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Languages; path = DemoApp/Resources/Languages; sourceTree = SOURCE_ROOT; };
 		C558F4562A2F0D78FC9C88A8 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E03DECCC43EE647A543BD618 /* DemoAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoAppApp.swift; sourceTree = "<group>"; };
-		E1969AE99439F4294D765E2A /* tokenizer.model */ = {isa = PBXFileReference; lastKnownFileType = file; path = tokenizer.model; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,9 +51,7 @@
 		7D0AB9953E006AF009EFF26C /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				B9F7A1BE86A6A400B41A640F /* Artifacts */,
-				E1969AE99439F4294D765E2A /* tokenizer.model */,
-				B7F2FCCB1037A8AA28689414 /* Voices */,
+				B07B05E7EBAE6A1C049E692F /* Languages */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -87,7 +80,6 @@
 				95338D23F36161FB31B3904D /* StreamingPlayer.swift */,
 				5D88526D45AC51AD780564F8 /* TTSViewModel.swift */,
 				8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */,
-				6598F44AECA129A4C6BFEFA3 /* VoicePickerView.swift */,
 				7D0AB9953E006AF009EFF26C /* Resources */,
 			);
 			path = DemoApp;
@@ -156,9 +148,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BF3A4671AD9DCCDFE8059353 /* Artifacts in Resources */,
-				014E617951F96A061BBDBE92 /* Voices in Resources */,
-				700A6FE594DA51BC0DD0A773 /* tokenizer.model in Resources */,
+				AC60E3310793FFCE1C4A3B5F /* Languages in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

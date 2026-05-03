@@ -33,15 +33,19 @@ public final class TTSViewModel {
     public var isGenerating: Bool = false
     public var isStreaming: Bool = false
     public var generatedPCM: Data? = nil
-    public var text: String = """
-        Pocket TTS is a lightweight text-to-speech model. \
-        It runs entirely on your iPhone, streaming audio as the voice speaks. \
-        Tap Stream to hear it break a longer paragraph into sentences.
-        """
+    public var text: String = Language.defaultBundled.defaultPrompt
     public var voices: [VoiceEntry] = []
     public var selectedVoice: VoiceEntry? = nil
     public var errorMessage: String? = nil
     public var isReady: Bool = false
+
+    /// Currently-selected language. Changing this triggers an async
+    /// `switchLanguage(to:)` call that disposes the PocketTTS actor and
+    /// reloads the per-language artifacts + tokenizer + voice list.
+    public var selectedLanguage: Language = Language.defaultBundled
+    /// True while the async language switch is in flight. The UI disables
+    /// the bottom bar + voice picker while this is true.
+    public var isSwitchingLanguage: Bool = false
 
     /// Stats surfaced in the status card. Values are nil until populated
     /// by load() (initSeconds) or generate() (rest). Reset at the start
@@ -69,8 +73,9 @@ public final class TTSViewModel {
 
     public init(player: StreamingPlayer = StreamingPlayer()) {
         self.player = player
-        self.voices = VoiceCatalog.bundled()
-        self.selectedVoice = voices.first
+        // Voice list is populated by load() once the initial language is locked in.
+        self.voices = []
+        self.selectedVoice = nil
     }
 
     /// Async-load the model. Call from a `.task` modifier on the root view.
@@ -78,41 +83,7 @@ public final class TTSViewModel {
         guard !isReady && errorMessage == nil else { return }
         let initStart = Date()
         do {
-            let bundle = Bundle.main
-            guard let artifactsDir = bundle.url(
-                forResource: "Artifacts", withExtension: nil
-            ) else {
-                throw DemoError.missingResource(
-                    "Artifacts/ directory not bundled. Run prepare_resources.sh."
-                )
-            }
-            guard let tokenizerURL = bundle.url(
-                forResource: "tokenizer", withExtension: "model"
-            ) else {
-                throw DemoError.missingResource(
-                    "tokenizer.model not bundled. Run prepare_resources.sh."
-                )
-            }
-
-            self.tokenizer = try Tokenizer(modelURL: tokenizerURL)
-
-            status = "Compiling CoreML models (first launch is slow)…"
-            let model = try await PocketTTS(
-                artifactsBundle: artifactsDir,
-                tokenizerPath: tokenizerURL,
-                computeUnits: .cpuAndNeuralEngine
-            )
-            self.tts = model
-
-            status = "Warming up…"
-            await model.warmup()
-
-            if voices.isEmpty {
-                throw DemoError.missingResource(
-                    "No voices found in Resources/Voices/. Run prepare_resources.sh."
-                )
-            }
-
+            try await loadLanguage(selectedLanguage)
             self.stats.initSeconds = Date().timeIntervalSince(initStart)
             self.isReady = true
             self.status = "Idle"
@@ -123,6 +94,121 @@ public final class TTSViewModel {
             self.errorMessage = error.localizedDescription
             self.status = "Load failed"
         }
+    }
+
+    /// Resolve the per-language Resources subtree
+    /// (Resources/Languages/<id>/{Artifacts,tokenizer.model,Voices}).
+    private func resolveLanguageResources(
+        _ language: Language
+    ) throws -> (artifacts: URL, tokenizer: URL) {
+        guard let base = Bundle.main.resourceURL else {
+            throw DemoError.missingResource(
+                "Bundle.main.resourceURL is nil. This should never happen."
+            )
+        }
+        let langDir = base
+            .appendingPathComponent("Languages", isDirectory: true)
+            .appendingPathComponent(language.id, isDirectory: true)
+        let artifactsDir = langDir.appendingPathComponent("Artifacts", isDirectory: true)
+        let tokenizerURL = langDir.appendingPathComponent("tokenizer.model")
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: artifactsDir.path) else {
+            throw DemoError.missingResource(
+                "Artifacts for \(language.displayName) not bundled at \(artifactsDir.path). "
+                + "Run prepare_resources.sh."
+            )
+        }
+        guard fm.fileExists(atPath: tokenizerURL.path) else {
+            throw DemoError.missingResource(
+                "tokenizer.model for \(language.displayName) not bundled at "
+                + "\(tokenizerURL.path). Run prepare_resources.sh."
+            )
+        }
+        return (artifacts: artifactsDir, tokenizer: tokenizerURL)
+    }
+
+    /// Instantiate PocketTTS + Tokenizer for `language` and refresh the
+    /// voice list. Used by both initial `load()` and `switchLanguage(to:)`.
+    private func loadLanguage(_ language: Language) async throws {
+        let urls = try resolveLanguageResources(language)
+        self.tokenizer = try Tokenizer(modelURL: urls.tokenizer)
+
+        status = "Compiling CoreML models for \(language.displayName) (first launch is slow)…"
+        let model = try await PocketTTS(
+            artifactsBundle: urls.artifacts,
+            tokenizerPath: urls.tokenizer,
+            computeUnits: .cpuAndNeuralEngine
+        )
+        self.tts = model
+
+        status = "Warming up \(language.displayName)…"
+        await model.warmup()
+
+        let langVoices = VoiceCatalog.bundled(for: language.id)
+        if langVoices.isEmpty {
+            throw DemoError.missingResource(
+                "No voices found for \(language.displayName). Run prepare_resources.sh."
+            )
+        }
+        self.voices = langVoices
+        self.selectedVoice = langVoices.first
+    }
+
+    /// Switch the runtime to a different language. Cancels any running
+    /// task, disposes of the existing PocketTTS actor, reloads artifacts
+    /// + tokenizer + voices, and resets run-specific stats. Keeps the
+    /// `text` field so the user can quickly re-generate in the new language.
+    public func switchLanguage(to language: Language) async {
+        guard language.id != selectedLanguage.id else { return }
+        cancelRunning()
+        player.stopStream()
+        isGenerating = false
+        isStreaming = false
+        errorMessage = nil
+        generatedPCM = nil
+        // Reset per-run stats (keep initSeconds so it shows both "first boot"
+        // and subsequent language-switch times if we wanted to; for simplicity
+        // we replace it with the switch time below).
+        var s = stats
+        s.firstAudioSeconds = nil
+        s.generateSeconds = nil
+        s.audioSeconds = nil
+        s.rtf = nil
+        stats = s
+
+        isSwitchingLanguage = true
+        isReady = false
+        status = "Switching to \(language.displayName)…"
+
+        // Drop the old actor BEFORE constructing the new one to free its
+        // CoreML resources. (The actor holds MLModel handles; dropping the
+        // reference lets CoreML unload them.)
+        self.tts = nil
+        self.tokenizer = nil
+
+        // Replace the text editor content with the new language's default
+        // prompt ONLY if the user hasn't typed anything custom. We detect
+        // "still on a default prompt" by checking that the current text
+        // matches one of the bundled defaults.
+        if Language.allDefaultPrompts.contains(self.text) {
+            self.text = language.defaultPrompt
+        }
+
+        self.selectedLanguage = language
+        let switchStart = Date()
+        do {
+            try await loadLanguage(language)
+            self.stats.initSeconds = Date().timeIntervalSince(switchStart)
+            self.isReady = true
+            self.status = "Idle"
+        } catch let err as PocketTTSLoadError {
+            self.errorMessage = err.description
+            self.status = "Language switch failed"
+        } catch {
+            self.errorMessage = error.localizedDescription
+            self.status = "Language switch failed"
+        }
+        isSwitchingLanguage = false
     }
 
     // MARK: - Public actions
