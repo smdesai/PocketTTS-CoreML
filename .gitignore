@@ -53,11 +53,20 @@ PocketTTSCoreML/Examples/**/Resources/*.model
 # Voice embeddings (CC-BY-NC-SA; regenerate from HF)
 voices/
 voices_spanish/
+voices_german/
+voices_italian/
+voices_portuguese/
 
 # Pre-compiled CoreML artifacts (regenerate with xcrun coremlcompiler)
 Artifacts/en_alba_fp16_mlmodelc/
 Artifacts/es_fp16/
 Artifacts/es_fp16_mlmodelc/
+Artifacts/de_fp16/
+Artifacts/de_fp16_mlmodelc/
+Artifacts/it_fp16/
+Artifacts/it_fp16_mlmodelc/
+Artifacts/pt_fp16/
+Artifacts/pt_fp16_mlmodelc/
 
 # Per-language DemoApp Resources (physical copies made by prepare_resources.sh)
 PocketTTSCoreML/Examples/**/Resources/Languages/
