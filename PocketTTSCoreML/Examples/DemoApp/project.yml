@@ -30,6 +30,11 @@ targets:
         excludes:
           - "Resources"          # included below explicitly
           - "Info.plist"         # declared via info.path
+      # Shared ActivityAttributes + StopPocketTTSIntent — compiled into
+      # both the app target (to start/update Live Activities + observe
+      # the Stop Darwin notification) and the widget extension target
+      # (to render views + declare the App Intent).
+      - path: Shared
       # Per-language resources. prepare_resources.sh builds
       # Resources/Languages/<id>/{Artifacts,Voices,tokenizer.model} for every
       # supported language; a single top-level folder reference picks them
@@ -40,6 +45,8 @@ targets:
     dependencies:
       - package: PocketTTSCoreML
         product: PocketTTSCoreML
+      # Embed the Live Activity widget extension inside the app bundle.
+      - target: PocketTTSLiveActivity
     info:
       path: DemoApp/Info.plist
       properties:
@@ -49,6 +56,9 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UIBackgroundModes:
           - audio
+        # ActivityKit: declare Live Activity support. Required on iOS 16.1+
+        # for Activity.request() to succeed.
+        NSSupportsLiveActivities: true
         # Microphone usage: required for the voice-cloning flow in
         # CloneSheet.swift. The user can either record a ~4s reference
         # clip or pick an existing audio file; the record path prompts
@@ -70,6 +80,31 @@ targets:
         ENABLE_PREVIEWS: "YES"
         SWIFT_VERSION: "6.0"
 
+  PocketTTSLiveActivity:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: PocketTTSLiveActivity
+        excludes:
+          - "Info.plist"
+      # Share the ActivityAttributes + StopPocketTTSIntent with the app.
+      - path: Shared
+    info:
+      path: PocketTTSLiveActivity/Info.plist
+      properties:
+        CFBundleDisplayName: PocketTTS Live Activity
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.demo.DemoApp.LiveActivity
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        ENABLE_PREVIEWS: "YES"
+        # Extensions do not themselves declare background modes; the
+        # app host does. No Info.plist background keys here.
+
 # Declare the scheme explicitly so `xcodegen generate` re-creates
 # xcshareddata/xcschemes/DemoApp.xcscheme instead of wiping the
 # directory. Without this block, xcodegen silently deletes the
@@ -82,6 +117,7 @@ schemes:
       buildImplicitDependencies: true
       targets:
         DemoApp: all
+        PocketTTSLiveActivity: all
     run:
       config: Debug
     test:
