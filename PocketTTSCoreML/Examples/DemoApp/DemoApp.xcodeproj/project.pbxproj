@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BCEA37AB4767A806339C094 /* MemoryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185DCF3A3945F8CAAA37B6B5 /* MemoryMonitor.swift */; };
 		3232E2AEBB826B40F25F10E7 /* PocketTTSLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60FBE2EC8492D063F677C1B6 /* PocketTTSLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44A69E4B0026E491929CA0AA /* PocketTTSLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C232C3F03B1C47F1ECA8434 /* PocketTTSLiveActivityBundle.swift */; };
 		4C3AD4D14B0F43247611BC35 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3250255C05CBCD178D1A8B /* PocketTTSActivityAttributes.swift */; };
@@ -52,6 +53,7 @@
 
 /* Begin PBXFileReference section */
 		154FAE636D5E23DF886F3868 /* DemoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		185DCF3A3945F8CAAA37B6B5 /* MemoryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMonitor.swift; sourceTree = "<group>"; };
 		1B51D588CB55A82FD76D485A /* PocketTTSLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSLiveActivity.swift; sourceTree = "<group>"; };
 		1F3250255C05CBCD178D1A8B /* PocketTTSActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSActivityAttributes.swift; sourceTree = "<group>"; };
 		29837C9D7B8AC060204473D1 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 				C558F4562A2F0D78FC9C88A8 /* ContentView.swift */,
 				E03DECCC43EE647A543BD618 /* DemoAppApp.swift */,
 				29837C9D7B8AC060204473D1 /* LiveActivityController.swift */,
+				185DCF3A3945F8CAAA37B6B5 /* MemoryMonitor.swift */,
 				95338D23F36161FB31B3904D /* StreamingPlayer.swift */,
 				5D88526D45AC51AD780564F8 /* TTSViewModel.swift */,
 				8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */,
@@ -253,6 +256,7 @@
 				AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */,
 				7747C7646C100FF7FA2C55F9 /* DemoAppApp.swift in Sources */,
 				C8CBD7888DB8A3FB26C5EC58 /* LiveActivityController.swift in Sources */,
+				0BCEA37AB4767A806339C094 /* MemoryMonitor.swift in Sources */,
 				4C3AD4D14B0F43247611BC35 /* PocketTTSActivityAttributes.swift in Sources */,
 				6E8B4E9B755128634B128CE1 /* StopPocketTTSIntent.swift in Sources */,
 				FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */,

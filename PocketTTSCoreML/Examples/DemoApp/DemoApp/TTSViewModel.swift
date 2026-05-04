@@ -55,8 +55,12 @@ public final class TTSViewModel {
         public var generateSeconds: Double? = nil  // total wall time for this run
         public var audioSeconds: Double? = nil  // total audio duration generated
         public var rtf: Double? = nil  // generateSeconds / audioSeconds
+        public var peakMemoryMB: Double? = nil  // peak phys_footprint during the run
     }
     public var stats = Stats()
+
+    /// Polls `phys_footprint` during generate/stream to report peak RAM.
+    private let peakMemory = PeakMemoryTracker()
 
     /// The StreamingPlayer is observed directly by the View — we keep a
     /// strong reference here but the view sets up its own @StateObject.
@@ -305,6 +309,7 @@ public final class TTSViewModel {
         s.generateSeconds = nil
         s.audioSeconds = nil
         s.rtf = nil
+        s.peakMemoryMB = nil
         stats = s
 
         let text = preparedText()
@@ -320,6 +325,7 @@ public final class TTSViewModel {
             chunks.count == 1
             ? "Generating…"
             : "Generating (1/\(chunks.count))…"
+        peakMemory.start()
 
         // Wrap in a plain Task<Void, Never> so it matches runningTask's
         // type. Share the result (and a first-audio timestamp) via actor.
@@ -360,6 +366,7 @@ public final class TTSViewModel {
 
         let (accumOpt, errOpt, firstPCMAt) = await box.take()
         let wallSeconds = Date().timeIntervalSince(wallStart)
+        let peakMB = peakMemory.stop()
         do {
             if let err = errOpt { throw err }
             let accum = accumOpt ?? Data()
@@ -372,6 +379,7 @@ public final class TTSViewModel {
             if let firstAt = firstPCMAt {
                 s.firstAudioSeconds = firstAt.timeIntervalSince(wallStart)
             }
+            s.peakMemoryMB = peakMB
             self.stats = s
             self.status = "Audio ready"
         } catch is CancellationError {
@@ -443,6 +451,7 @@ public final class TTSViewModel {
         s.generateSeconds = nil
         s.audioSeconds = nil
         s.rtf = nil
+        s.peakMemoryMB = nil
         stats = s
 
         let text = preparedText()
@@ -470,6 +479,7 @@ public final class TTSViewModel {
             statusLine: status
         )
         let wallStart = Date()
+        peakMemory.start()
         do {
             try await runStream(
                 chunks: chunks, voice: voice, tts: tts, wallStart: wallStart
@@ -480,6 +490,10 @@ public final class TTSViewModel {
             errorMessage = error.localizedDescription
             status = "Stream failed"
         }
+        let peakMB = peakMemory.stop()
+        var s2 = self.stats
+        s2.peakMemoryMB = peakMB
+        self.stats = s2
         isStreaming = false
         await liveActivity.end()
     }
@@ -490,6 +504,10 @@ public final class TTSViewModel {
         cancelRunning()
         player.stopStream()
         if isStreaming || isGenerating {
+            let peakMB = peakMemory.stop()
+            var s = self.stats
+            s.peakMemoryMB = peakMB
+            self.stats = s
             status = "Stopped"
         }
         isGenerating = false

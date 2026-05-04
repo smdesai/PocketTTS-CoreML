@@ -309,6 +309,13 @@ struct ContentView: View {
             // so invert for display.
             parts.append(String(format: "RTFx %.2fx", 1.0 / rtf))
         }
+        if let peak = viewModel.stats.peakMemoryMB {
+            if peak >= 1024 {
+                parts.append(String(format: "Peak: %.2f GB", peak / 1024.0))
+            } else {
+                parts.append(String(format: "Peak: %.0f MB", peak))
+            }
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
