@@ -14,8 +14,8 @@
 //
 
 import Foundation
-import SwiftUI
 import PocketTTSCoreML
+import SwiftUI
 
 @Observable
 @MainActor
@@ -25,7 +25,6 @@ public final class TTSViewModel {
     /// CoreML doesn't cause audible amplitude decay. ~25 tokens ≈ 2s of
     /// audio, well under the ~40-frame drift threshold measured on device.
     static let chunkMaxTokens: Int = 25
-
 
     // MARK: - User-facing state
 
@@ -51,11 +50,11 @@ public final class TTSViewModel {
     /// by load() (initSeconds) or generate() (rest). Reset at the start
     /// of each generate so the card reflects the most recent run.
     public struct Stats {
-        public var initSeconds: Double?         = nil  // model load + warmup (one-time)
-        public var firstAudioSeconds: Double?   = nil  // wall time to first PCM chunk
-        public var generateSeconds: Double?     = nil  // total wall time for this run
-        public var audioSeconds: Double?        = nil  // total audio duration generated
-        public var rtf: Double?                 = nil  // generateSeconds / audioSeconds
+        public var initSeconds: Double? = nil  // model load + warmup (one-time)
+        public var firstAudioSeconds: Double? = nil  // wall time to first PCM chunk
+        public var generateSeconds: Double? = nil  // total wall time for this run
+        public var audioSeconds: Double? = nil  // total audio duration generated
+        public var rtf: Double? = nil  // generateSeconds / audioSeconds
     }
     public var stats = Stats()
 
@@ -121,7 +120,8 @@ public final class TTSViewModel {
                 "Bundle.main.resourceURL is nil. This should never happen."
             )
         }
-        let langDir = base
+        let langDir =
+            base
             .appendingPathComponent("Languages", isDirectory: true)
             .appendingPathComponent(language.id, isDirectory: true)
         let artifactsDir = langDir.appendingPathComponent("Artifacts", isDirectory: true)
@@ -130,13 +130,13 @@ public final class TTSViewModel {
         guard fm.fileExists(atPath: artifactsDir.path) else {
             throw DemoError.missingResource(
                 "Artifacts for \(language.displayName) not bundled at \(artifactsDir.path). "
-                + "Run prepare_resources.sh."
+                    + "Run prepare_resources.sh."
             )
         }
         guard fm.fileExists(atPath: tokenizerURL.path) else {
             throw DemoError.missingResource(
                 "tokenizer.model for \(language.displayName) not bundled at "
-                + "\(tokenizerURL.path). Run prepare_resources.sh."
+                    + "\(tokenizerURL.path). Run prepare_resources.sh."
             )
         }
         return (artifacts: artifactsDir, tokenizer: tokenizerURL)
@@ -178,10 +178,12 @@ public final class TTSViewModel {
         let all = VoiceCatalog.all(for: selectedLanguage.id)
         self.voices = all
         if let wantedID = selectingID,
-           let match = all.first(where: { $0.id == wantedID }) {
+            let match = all.first(where: { $0.id == wantedID })
+        {
             self.selectedVoice = match
         } else if let current = selectedVoice,
-                  all.contains(where: { $0.id == current.id }) {
+            all.contains(where: { $0.id == current.id })
+        {
             // Preserve current selection if it's still present.
         } else {
             self.selectedVoice = all.first
@@ -287,8 +289,9 @@ public final class TTSViewModel {
     /// Each chunk gets a fresh VoiceHandle (re-prefills voice KV + text).
     public func generate() async {
         guard isReady, !isGenerating, !isStreaming,
-              let voice = selectedVoice, let tts = tts,
-              let tokenizer = tokenizer else { return }
+            let voice = selectedVoice, let tts = tts,
+            let tokenizer = tokenizer
+        else { return }
         cancelRunning()
         isGenerating = true
         errorMessage = nil
@@ -313,8 +316,10 @@ public final class TTSViewModel {
             isGenerating = false
             return
         }
-        status = chunks.count == 1 ? "Generating…"
-                                   : "Generating (1/\(chunks.count))…"
+        status =
+            chunks.count == 1
+            ? "Generating…"
+            : "Generating (1/\(chunks.count))…"
 
         // Wrap in a plain Task<Void, Never> so it matches runningTask's
         // type. Share the result (and a first-audio timestamp) via actor.
@@ -427,8 +432,9 @@ public final class TTSViewModel {
     /// at most 2 chunks queued ahead of the player.
     public func stream() async {
         guard isReady, !isGenerating, !isStreaming,
-              let voice = selectedVoice, let tts = tts,
-              let tokenizer = tokenizer else { return }
+            let voice = selectedVoice, let tts = tts,
+            let tokenizer = tokenizer
+        else { return }
         cancelRunning()
         errorMessage = nil
         // Reset per-run stats so the card reflects this streaming session.
@@ -648,7 +654,7 @@ public final class TTSViewModel {
 
     private func wavHeader(samples: Int, sampleRate: UInt32) -> Data {
         // RIFF/WAV PCM16 mono header.
-        let byteRate = sampleRate * 2           // 1 channel * 2 bytes/sample
+        let byteRate = sampleRate * 2  // 1 channel * 2 bytes/sample
         let blockAlign: UInt16 = 2
         let subchunk2: UInt32 = UInt32(samples) * 2
         let chunkSize: UInt32 = 36 + subchunk2
@@ -657,13 +663,13 @@ public final class TTSViewModel {
         h.append(UInt32(chunkSize).littleEndianData)
         h.append("WAVE".data(using: .ascii)!)
         h.append("fmt ".data(using: .ascii)!)
-        h.append(UInt32(16).littleEndianData)   // subchunk1 size
-        h.append(UInt16(1).littleEndianData)    // PCM format
-        h.append(UInt16(1).littleEndianData)    // channels
+        h.append(UInt32(16).littleEndianData)  // subchunk1 size
+        h.append(UInt16(1).littleEndianData)  // PCM format
+        h.append(UInt16(1).littleEndianData)  // channels
         h.append(sampleRate.littleEndianData)
         h.append(byteRate.littleEndianData)
         h.append(blockAlign.littleEndianData)
-        h.append(UInt16(16).littleEndianData)   // bits per sample
+        h.append(UInt16(16).littleEndianData)  // bits per sample
         h.append("data".data(using: .ascii)!)
         h.append(subchunk2.littleEndianData)
         return h
@@ -754,8 +760,8 @@ actor BoundedChannel<Element: Sendable> {
 
 // MARK: - WAV helpers
 
-private extension FixedWidthInteger {
-    var littleEndianData: Data {
+extension FixedWidthInteger {
+    fileprivate var littleEndianData: Data {
         withUnsafeBytes(of: self.littleEndian) { Data($0) }
     }
 }

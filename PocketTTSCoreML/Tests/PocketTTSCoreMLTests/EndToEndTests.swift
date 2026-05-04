@@ -1,5 +1,6 @@
-import XCTest
 import Foundation
+import XCTest
+
 @testable import PocketTTSCoreML
 
 /// Full pipeline test: requires the Artifacts dir + tokenizer + a pre-
@@ -10,11 +11,13 @@ import Foundation
 final class EndToEndTests: XCTestCase {
 
     func testCanonicalPromptGeneration() async throws {
-        try XCTSkipUnless(FixturePaths.artifactsAvailable,
-                          "mlpackages not available at \(FixturePaths.artifactsDir.path)")
+        try XCTSkipUnless(
+            FixturePaths.artifactsAvailable,
+            "mlpackages not available at \(FixturePaths.artifactsDir.path)")
         try XCTSkipUnless(FixturePaths.tokenizerAvailable, "tokenizer missing")
-        try XCTSkipUnless(FixturePaths.prefilledVoiceAvailable,
-                          "alba_prefilled.safetensors missing — regenerate via export_full_prefill.py")
+        try XCTSkipUnless(
+            FixturePaths.prefilledVoiceAvailable,
+            "alba_prefilled.safetensors missing — regenerate via export_full_prefill.py")
 
         let tts = try await PocketTTS(
             artifactsBundle: FixturePaths.artifactsDir,
@@ -32,7 +35,7 @@ final class EndToEndTests: XCTestCase {
             pcm.withUnsafeBytes { raw in
                 let n = raw.count / 2
                 let buf = raw.bindMemory(to: Int16.self)
-                for i in 0..<n { samples.append(buf[i]) }
+                for i in 0 ..< n { samples.append(buf[i]) }
             }
         }
 
@@ -48,10 +51,13 @@ final class EndToEndTests: XCTestCase {
             let swiftFloats = samples.map { Float($0) / 32768.0 }
 
             let (overallPSNR, bestEarly) = psnrAnalysis(swiftFloats, goldenFloats)
-            print("[EndToEnd] overall PSNR \(overallPSNR) dB | best early-frame PSNR \(bestEarly) dB")
-            XCTAssertGreaterThanOrEqual(overallPSNR, 15,
+            print(
+                "[EndToEnd] overall PSNR \(overallPSNR) dB | best early-frame PSNR \(bestEarly) dB")
+            XCTAssertGreaterThanOrEqual(
+                overallPSNR, 15,
                 "overall PSNR below 15 dB floor")
-            XCTAssertGreaterThanOrEqual(bestEarly, 25,
+            XCTAssertGreaterThanOrEqual(
+                bestEarly, 25,
                 "best early-frame PSNR below 25 dB floor")
         }
     }
@@ -64,7 +70,7 @@ final class EndToEndTests: XCTestCase {
         guard n > 0 else { return (0, 0) }
         func psnr(_ start: Int, _ count: Int) -> Float {
             var mse: Double = 0
-            for i in 0..<count {
+            for i in 0 ..< count {
                 let d = Double(a[start + i] - b[start + i])
                 mse += d * d
             }
@@ -76,7 +82,7 @@ final class EndToEndTests: XCTestCase {
         let frame = PocketTTSArch.frameSize
         let framesAvailable = min(5, n / frame)
         var bestEarly: Float = -.infinity
-        for f in 0..<framesAvailable {
+        for f in 0 ..< framesAvailable {
             let v = psnr(f * frame, frame)
             if v > bestEarly { bestEarly = v }
         }

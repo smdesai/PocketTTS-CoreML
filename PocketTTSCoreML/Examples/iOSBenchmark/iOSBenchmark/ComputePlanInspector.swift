@@ -16,8 +16,8 @@
 // malformed program), the row still renders with zeros + a note.
 //
 
-import Foundation
 import CoreML
+import Foundation
 
 public struct ComputePlanReport: Codable, Sendable, Identifiable {
     public var id: String { modelName }
@@ -60,10 +60,11 @@ public enum ComputePlanInspector {
             } else if fm.fileExists(atPath: mlpackage.path) {
                 url = mlpackage
             } else {
-                results.append(.init(
-                    modelName: name, opCount: 0, anePct: 0, gpuPct: 0, cpuPct: 0,
-                    note: "not found (.mlmodelc or .mlpackage) in bundle"
-                ))
+                results.append(
+                    .init(
+                        modelName: name, opCount: 0, anePct: 0, gpuPct: 0, cpuPct: 0,
+                        note: "not found (.mlmodelc or .mlpackage) in bundle"
+                    ))
                 continue
             }
             let report = await inspect(
@@ -120,7 +121,8 @@ public enum ComputePlanInspector {
         if modelURL.pathExtension == "mlmodelc" {
             return modelURL
         }
-        let sibling = modelURL
+        let sibling =
+            modelURL
             .deletingPathExtension()
             .appendingPathExtension("mlmodelc")
         if FileManager.default.fileExists(atPath: sibling.path) {
@@ -136,7 +138,8 @@ public enum ComputePlanInspector {
     ) -> ComputePlanReport {
         // MLModelStructure is an enum with cases .program / .pipeline / .neuralNetwork / .unsupported
         guard case .program(let program) = plan.modelStructure,
-              let main = program.functions["main"] else {
+            let main = program.functions["main"]
+        else {
             return .init(
                 modelName: modelName, opCount: 0,
                 anePct: 0, gpuPct: 0, cpuPct: 0,
@@ -148,8 +151,9 @@ public enum ComputePlanInspector {
         var gpu = 0
         var cpu = 0
         var other = 0
-        walk(block: main.block, plan: plan,
-             ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
+        walk(
+            block: main.block, plan: plan,
+            ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
 
         let total = ane + gpu + cpu + other
         guard total > 0 else {
@@ -180,11 +184,13 @@ public enum ComputePlanInspector {
             // whose .preferred is the non-optional MLComputeDevice. Const ops etc.
             // may return nil because they aren't scheduled.
             let usage = plan.deviceUsage(for: op)
-            classify(usage?.preferred,
-                     ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
+            classify(
+                usage?.preferred,
+                ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
             for nested in op.blocks {
-                walk(block: nested, plan: plan,
-                     ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
+                walk(
+                    block: nested, plan: plan,
+                    ane: &ane, gpu: &gpu, cpu: &cpu, other: &other)
             }
         }
     }
@@ -194,12 +200,15 @@ public enum ComputePlanInspector {
         _ device: MLComputeDevice?,
         ane: inout Int, gpu: inout Int, cpu: inout Int, other: inout Int
     ) {
-        guard let device else { other += 1; return }
+        guard let device else {
+            other += 1
+            return
+        }
         switch device {
         case .neuralEngine: ane += 1
-        case .gpu:          gpu += 1
-        case .cpu:          cpu += 1
-        @unknown default:   other += 1
+        case .gpu: gpu += 1
+        case .cpu: cpu += 1
+        @unknown default: other += 1
         }
     }
 }

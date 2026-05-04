@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 /// Precomputed cosine/sine tables for RoPE (Rotary Position Embeddings).
 ///
@@ -23,14 +23,14 @@ public struct RoPECache: Sendable {
     public init(maxContext: Int, headDim: Int, base: Float = 10_000) {
         let half = headDim / 2
         var invFreq = [Float](repeating: 0, count: half)
-        for i in 0..<half {
+        for i in 0 ..< half {
             invFreq[i] = 1.0 / powf(base, Float(i) / Float(half))
         }
         var c = [Float](repeating: 0, count: maxContext * half)
         var s = [Float](repeating: 0, count: maxContext * half)
-        for t in 0..<maxContext {
+        for t in 0 ..< maxContext {
             let tf = Float(t)
-            for j in 0..<half {
+            for j in 0 ..< half {
                 let x = tf * invFreq[j]
                 c[t * half + j] = Foundation.cos(x)
                 s[t * half + j] = Foundation.sin(x)
@@ -45,19 +45,22 @@ public struct RoPECache: Sendable {
     /// Slice one AR step at `offset`, writing into MLMultiArrays of shape
     /// `[1, 1, 1, halfDim]`.
     public func fillStep(offset: Int, cosOut: MLMultiArray, sinOut: MLMultiArray) {
-        precondition(cosOut.count == halfDim && sinOut.count == halfDim,
-                     "RoPE step buffer size must match halfDim (\(halfDim)); got \(cosOut.count)")
+        precondition(
+            cosOut.count == halfDim && sinOut.count == halfDim,
+            "RoPE step buffer size must match halfDim (\(halfDim)); got \(cosOut.count)")
         let base = offset * halfDim
         cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.cos.withUnsafeBufferPointer { src in
-                memcpy(dst.baseAddress!, src.baseAddress! + base,
-                       halfDim * MemoryLayout<Float>.stride)
+                memcpy(
+                    dst.baseAddress!, src.baseAddress! + base,
+                    halfDim * MemoryLayout<Float>.stride)
             }
         }
         sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.sin.withUnsafeBufferPointer { src in
-                memcpy(dst.baseAddress!, src.baseAddress! + base,
-                       halfDim * MemoryLayout<Float>.stride)
+                memcpy(
+                    dst.baseAddress!, src.baseAddress! + base,
+                    halfDim * MemoryLayout<Float>.stride)
             }
         }
     }
@@ -73,14 +76,16 @@ public struct RoPECache: Sendable {
         let src = offset * halfDim
         cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.cos.withUnsafeBufferPointer { s in
-                memcpy(dst.baseAddress!, s.baseAddress! + src,
-                       length * halfDim * MemoryLayout<Float>.stride)
+                memcpy(
+                    dst.baseAddress!, s.baseAddress! + src,
+                    length * halfDim * MemoryLayout<Float>.stride)
             }
         }
         sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.sin.withUnsafeBufferPointer { s in
-                memcpy(dst.baseAddress!, s.baseAddress! + src,
-                       length * halfDim * MemoryLayout<Float>.stride)
+                memcpy(
+                    dst.baseAddress!, s.baseAddress! + src,
+                    length * halfDim * MemoryLayout<Float>.stride)
             }
         }
     }

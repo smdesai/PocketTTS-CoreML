@@ -33,11 +33,13 @@ let package = Package(
             path: "Sources/PocketTTSCoreML/CSentencePieceBridge",
             publicHeadersPath: "include",
             cxxSettings: [
-                .headerSearchPath("../../../Frameworks/SentencePiece.xcframework/macos-arm64_x86_64/SentencePiece.framework/Headers"),
+                .headerSearchPath(
+                    "../../../Frameworks/SentencePiece.xcframework/macos-arm64_x86_64/SentencePiece.framework/Headers"
+                ),
                 .define("SENTENCEPIECE_STATIC", to: "1"),
             ],
             linkerSettings: [
-                .linkedLibrary("c++"),
+                .linkedLibrary("c++")
             ]
         ),
         .target(
@@ -48,13 +50,13 @@ let package = Package(
             ],
             path: "Sources/PocketTTSCoreML",
             exclude: [
-                "CSentencePieceBridge",
+                "CSentencePieceBridge"
             ],
             resources: [
                 // No bundled resources by default; caller passes URLs.
             ],
             swiftSettings: [
-                .enableUpcomingFeature("BareSlashRegexLiterals"),
+                .enableUpcomingFeature("BareSlashRegexLiterals")
             ],
             linkerSettings: [
                 .linkedFramework("CoreML"),

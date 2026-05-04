@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 /// Architecture constants for the PocketTTS CoreML bundle.
 /// Must match `CoreMLGenerator` in `pockettts_coreml/e2e/generator.py`.
@@ -12,31 +12,31 @@ import CoreML
 /// default of 6 is correct for the majority of shipped languages.
 public enum PocketTTSArch {
     // FlowLM main transformer.
-    public static let flowSCap: Int     = 256
+    public static let flowSCap: Int = 256
     // nonisolated(unsafe) is appropriate here: the value is set exactly
     // once by PocketTTS.init (before the actor returns) and read-only
     // thereafter. The ordering is enforced by configureFlowLayers being
     // called before any KV allocation / voice load.
-    public nonisolated(unsafe) static var flowLayers: Int   = 6
-    public static let flowHeads: Int    = 16
-    public static let flowHeadDim: Int  = 64
-    public static let flowHalfDim: Int  = 32   // half of head_dim (RoPE table width)
-    public static let dModel: Int       = 1024
-    public static let latentDim: Int    = 32
+    public nonisolated(unsafe) static var flowLayers: Int = 6
+    public static let flowHeads: Int = 16
+    public static let flowHeadDim: Int = 64
+    public static let flowHalfDim: Int = 32  // half of head_dim (RoPE table width)
+    public static let dModel: Int = 1024
+    public static let latentDim: Int = 32
 
     // Mimi decoder streaming transformer.
-    public static let mimiSCap: Int     = 1024
-    public static let mimiLayers: Int   = 2
-    public static let mimiHeads: Int    = 8
-    public static let mimiHeadDim: Int  = 64
-    public static let mimiHalfDim: Int  = 32
+    public static let mimiSCap: Int = 1024
+    public static let mimiLayers: Int = 2
+    public static let mimiHeads: Int = 8
+    public static let mimiHeadDim: Int = 64
+    public static let mimiHalfDim: Int = 32
     public static let mimiTxContext: Int = 250
-    public static let mimiTStep: Int    = 16
+    public static let mimiTStep: Int = 16
 
-    public static let frameSize: Int    = 1920  // samples per AR frame (80 ms @ 24 kHz)
-    public static let sampleRate: Int   = 24000
+    public static let frameSize: Int = 1920  // samples per AR frame (80 ms @ 24 kHz)
+    public static let sampleRate: Int = 24000
 
-    public static let sTextPad: Int     = 128   // text_conditioner input width
+    public static let sTextPad: Int = 128  // text_conditioner input width
 
     // Defaults mirroring reference.
     public static let defaultTemperature: Float = 0.7
@@ -49,8 +49,8 @@ public enum PocketTTSArch {
     public static func configureFlowLayers(from flowMain: MLModel) {
         let desc = flowMain.modelDescription.inputDescriptionsByName
         guard let kv = desc["kv_cache_in"] ?? desc["kv_cache"],
-              let shape = kv.multiArrayConstraint?.shape,
-              let dim0 = shape.first?.intValue
+            let shape = kv.multiArrayConstraint?.shape,
+            let dim0 = shape.first?.intValue
         else { return }  // leave default (6) if shape can't be read
         // dim0 is 2*L; L = 6 for en/es/de/it/pt, 24 for french_24l.
         flowLayers = dim0 / 2
@@ -66,9 +66,9 @@ public final class FlowKVCache: @unchecked Sendable {
     public static let shape: [NSNumber] = [
         NSNumber(value: 2 * PocketTTSArch.flowLayers),  // 12
         1,
-        NSNumber(value: PocketTTSArch.flowSCap),        // 256
-        NSNumber(value: PocketTTSArch.flowHeads),       // 16
-        NSNumber(value: PocketTTSArch.flowHeadDim),     // 64
+        NSNumber(value: PocketTTSArch.flowSCap),  // 256
+        NSNumber(value: PocketTTSArch.flowHeads),  // 16
+        NSNumber(value: PocketTTSArch.flowHeadDim),  // 64
     ]
 
     public let array: MLMultiArray
@@ -83,7 +83,7 @@ public final class FlowKVCache: @unchecked Sendable {
     public func fill(with value: Float) {
         let n = array.count
         array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0..<n { buf[i] = value }
+            for i in 0 ..< n { buf[i] = value }
         }
     }
 
@@ -99,14 +99,14 @@ public final class FlowKVCache: @unchecked Sendable {
         let offsetV = (2 * layer + 1) * rowStride
         array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
             k.withUnsafeBufferPointer { kp in
-                for s in 0..<sLen {
+                for s in 0 ..< sLen {
                     let src = kp.baseAddress! + s * srcStride
                     let dst = buf.baseAddress! + offsetK + s * perSlot
                     memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)
                 }
             }
             v.withUnsafeBufferPointer { vp in
-                for s in 0..<sLen {
+                for s in 0 ..< sLen {
                     let src = vp.baseAddress! + s * srcStride
                     let dst = buf.baseAddress! + offsetV + s * perSlot
                     memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)

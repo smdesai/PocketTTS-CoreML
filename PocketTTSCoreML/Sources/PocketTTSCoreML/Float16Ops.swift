@@ -1,5 +1,5 @@
-import Foundation
 import Accelerate
+import Foundation
 
 /// Fast fp32 <-> fp16 bulk conversion via vImage. Allocates a temporary
 /// workspace per call; prefer using the MLMultiArray overloads below which
@@ -8,10 +8,12 @@ public enum Float16Ops {
     public static func fp32ToFp16(_ src: [Float]) -> [UInt16] {
         var input = src
         var output = [UInt16](repeating: 0, count: src.count)
-        var srcBuf = vImage_Buffer(data: &input, height: 1,
-                                   width: vImagePixelCount(src.count), rowBytes: src.count * 4)
-        var dstBuf = vImage_Buffer(data: &output, height: 1,
-                                   width: vImagePixelCount(src.count), rowBytes: src.count * 2)
+        var srcBuf = vImage_Buffer(
+            data: &input, height: 1,
+            width: vImagePixelCount(src.count), rowBytes: src.count * 4)
+        var dstBuf = vImage_Buffer(
+            data: &output, height: 1,
+            width: vImagePixelCount(src.count), rowBytes: src.count * 2)
         vImageConvert_PlanarFtoPlanar16F(&srcBuf, &dstBuf, 0)
         return output
     }
@@ -19,10 +21,12 @@ public enum Float16Ops {
     public static func fp16ToFp32(_ src: [UInt16]) -> [Float] {
         var input = src
         var output = [Float](repeating: 0, count: src.count)
-        var srcBuf = vImage_Buffer(data: &input, height: 1,
-                                   width: vImagePixelCount(src.count), rowBytes: src.count * 2)
-        var dstBuf = vImage_Buffer(data: &output, height: 1,
-                                   width: vImagePixelCount(src.count), rowBytes: src.count * 4)
+        var srcBuf = vImage_Buffer(
+            data: &input, height: 1,
+            width: vImagePixelCount(src.count), rowBytes: src.count * 2)
+        var dstBuf = vImage_Buffer(
+            data: &output, height: 1,
+            width: vImagePixelCount(src.count), rowBytes: src.count * 4)
         vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, 0)
         return output
     }

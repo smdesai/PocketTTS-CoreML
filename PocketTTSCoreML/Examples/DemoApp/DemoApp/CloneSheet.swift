@@ -26,8 +26,8 @@
 // language and will only appear in that language's voice list.
 //
 
-import SwiftUI
 import AVFoundation
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -100,8 +100,10 @@ struct CloneSheet: View {
             ) { result in
                 handleFileImport(result)
             }
-            .alert("Microphone access required",
-                   isPresented: $showPermissionAlert) {
+            .alert(
+                "Microphone access required",
+                isPresented: $showPermissionAlert
+            ) {
                 Button("Open Settings") { openSettings() }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -154,12 +156,14 @@ struct CloneSheet: View {
         HStack(spacing: 10) {
             Image(systemName: "info.circle.fill")
                 .foregroundStyle(.tint)
-            Text("Cloning for \(viewModel.selectedLanguage.displayName). "
-                 + "The cloned voice will only work with "
-                 + "\(viewModel.selectedLanguage.displayName) generation.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Cloning for \(viewModel.selectedLanguage.displayName). "
+                    + "The cloned voice will only work with "
+                    + "\(viewModel.selectedLanguage.displayName) generation."
+            )
+            .font(.system(size: 13))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,12 +204,13 @@ struct CloneSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled({
-                switch phase {
-                case .cloning: return true
-                default: return false
-                }
-            }())
+            .disabled(
+                {
+                    switch phase {
+                    case .cloning: return true
+                    default: return false
+                    }
+                }())
 
             // Pick-from-files button
             Button {
@@ -219,12 +224,13 @@ struct CloneSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled({
-                switch phase {
-                case .recording, .cloning: return true
-                default: return false
-                }
-            }())
+            .disabled(
+                {
+                    switch phase {
+                    case .recording, .cloning: return true
+                    default: return false
+                    }
+                }())
         }
     }
 
@@ -255,7 +261,8 @@ struct CloneSheet: View {
                     icon: "waveform",
                     tint: .gray,
                     title: "No audio yet",
-                    subtitle: "Record a 4-second sample or pick an audio file (.wav, .m4a, .caf, .aiff)."
+                    subtitle:
+                        "Record a 4-second sample or pick an audio file (.wav, .m4a, .caf, .aiff)."
                 )
 
             case .recording:
@@ -263,13 +270,16 @@ struct CloneSheet: View {
                     stateBody(
                         icon: "mic.fill",
                         tint: .red,
-                        title: String(format: "Recording %.1fs / %.0fs",
-                                      recorder.elapsed, CloneRecorder.maxDuration),
+                        title: String(
+                            format: "Recording %.1fs / %.0fs",
+                            recorder.elapsed, CloneRecorder.maxDuration),
                         subtitle: "Speak now. Recording stops automatically at 4 seconds."
                     )
-                    ProgressView(value: recorder.elapsed,
-                                 total: CloneRecorder.maxDuration)
-                        .tint(.red)
+                    ProgressView(
+                        value: recorder.elapsed,
+                        total: CloneRecorder.maxDuration
+                    )
+                    .tint(.red)
                 }
 
             case .recorded(_, let duration):
@@ -300,7 +310,7 @@ struct CloneSheet: View {
                         tint: .blue,
                         title: "Cloning voice…",
                         subtitle: "mimi_encoder → speaker_proj → flow_lm_prefill. "
-                                  + "This can take 10-30s on simulator and ~1-3s on device.",
+                            + "This can take 10-30s on simulator and ~1-3s on device.",
                         showSpinner: true
                     )
                 }
@@ -373,14 +383,16 @@ struct CloneSheet: View {
             Text("Voice cloning is not available for \(viewModel.selectedLanguage.displayName).")
                 .font(.system(size: 17, weight: .semibold))
                 .multilineTextAlignment(.center)
-            Text("The speaker projection sidecar (speaker_proj.safetensors) "
-                 + "is missing from this language's bundle. Re-export it via "
-                 + "`python -m pockettts_coreml.convert.export_speaker_proj` "
-                 + "and re-run prepare_resources.sh.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
+            Text(
+                "The speaker projection sidecar (speaker_proj.safetensors) "
+                    + "is missing from this language's bundle. Re-export it via "
+                    + "`python -m pockettts_coreml.convert.export_speaker_proj` "
+                    + "and re-run prepare_resources.sh."
+            )
+            .font(.system(size: 13))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 8)
             Spacer()
         }
         .padding(24)
@@ -475,8 +487,9 @@ struct CloneSheet: View {
             // preview (the record session left it in .playAndRecord
             // which is fine, but defaultToSpeaker routes audible output).
             let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.playAndRecord, mode: .default,
-                                     options: [.defaultToSpeaker, .allowBluetooth])
+            try? session.setCategory(
+                .playAndRecord, mode: .default,
+                options: [.defaultToSpeaker, .allowBluetooth])
             try? session.setActive(true, options: [])
 
             let p = try AVAudioPlayer(contentsOf: url)

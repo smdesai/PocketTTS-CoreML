@@ -6,8 +6,8 @@
 // extensions that can ship multiple widgets (we only ship one).
 //
 
-import WidgetKit
 import SwiftUI
+import WidgetKit
 
 @main
 struct PocketTTSLiveActivityBundle: WidgetBundle {

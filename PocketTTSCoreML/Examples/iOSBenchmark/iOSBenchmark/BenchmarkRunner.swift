@@ -9,8 +9,8 @@
 // ObservableObject on the main actor.
 //
 
-import Foundation
 import CoreML
+import Foundation
 import PocketTTSCoreML
 
 // MARK: - Report types
@@ -94,11 +94,14 @@ public final class BenchmarkRunner: ObservableObject {
 
     public init() throws {
         let bundle = Bundle.main
-        guard let artifactsDir = bundle.url(
-            forResource: "Artifacts", withExtension: nil
-        ) ?? bundle.url(
-            forResource: "en_fp16", withExtension: nil
-        ) else {
+        guard
+            let artifactsDir = bundle.url(
+                forResource: "Artifacts", withExtension: nil
+            )
+                ?? bundle.url(
+                    forResource: "en_fp16", withExtension: nil
+                )
+        else {
             throw BenchmarkError.missingResource(
                 "Artifacts/ directory not bundled with app"
             )
@@ -111,16 +114,20 @@ public final class BenchmarkRunner: ObservableObject {
             self.artifactsDir = artifactsDir
         }
 
-        guard let voice = bundle.url(
-            forResource: "alba", withExtension: "safetensors"
-        ) else {
+        guard
+            let voice = bundle.url(
+                forResource: "alba", withExtension: "safetensors"
+            )
+        else {
             throw BenchmarkError.missingResource("alba.safetensors not bundled")
         }
         self.voiceURL = voice
 
-        guard let tokenizer = bundle.url(
-            forResource: "tokenizer", withExtension: "model"
-        ) else {
+        guard
+            let tokenizer = bundle.url(
+                forResource: "tokenizer", withExtension: "model"
+            )
+        else {
             throw BenchmarkError.missingResource("tokenizer.model not bundled")
         }
         self.tokenizerURL = tokenizer
@@ -145,7 +152,8 @@ public final class BenchmarkRunner: ObservableObject {
         // Refuse to start if we're in the failed-init fallback state —
         // the error message is already on-screen.
         if errorMessage != nil
-            && !FileManager.default.fileExists(atPath: voiceURL.path) {
+            && !FileManager.default.fileExists(atPath: voiceURL.path)
+        {
             return
         }
         isRunning = true
@@ -210,7 +218,7 @@ public final class BenchmarkRunner: ObservableObject {
 
         // Warm runs — collect wall times, use median.
         var warmWalls: [Double] = []
-        for i in 0..<warmIterations {
+        for i in 0 ..< warmIterations {
             status = "\(label): warm run \(i + 1)/\(warmIterations)…"
             let (wall, _) = try await Self.timedGenerate(tts: tts, voice: voice)
             warmWalls.append(wall)
@@ -330,17 +338,17 @@ public final class BenchmarkRunner: ObservableObject {
 
 // MARK: - JSON + markdown export
 
-public extension BenchmarkReport {
+extension BenchmarkReport {
 
     /// Pretty-printed JSON.
-    func jsonData() throws -> Data {
+    public func jsonData() throws -> Data {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try enc.encode(self)
     }
 
     /// Tagged markdown summary tuned for pasting into a handoff.
-    func markdownSummary() -> String {
+    public func markdownSummary() -> String {
         var out = ""
         out += "# PocketTTS CoreML — on-device RTF report\n\n"
         out += "- **Device model id:** `\(deviceModel)`\n"
@@ -349,7 +357,8 @@ public extension BenchmarkReport {
         out += "- **Prompt:** \"\(prompt)\"\n"
         out += "- **Voice:** \(voiceName)\n\n"
         out += "## RTF by compute-units config\n\n"
-        out += "| mode | audio s | cold s | warm s (median) | cold RTF | warm RTF | peak thermal | verdict |\n"
+        out +=
+            "| mode | audio s | cold s | warm s (median) | cold RTF | warm RTF | peak thermal | verdict |\n"
         out += "|---|---|---|---|---|---|---|---|\n"
         for r in rows {
             out += "| \(r.mode) "

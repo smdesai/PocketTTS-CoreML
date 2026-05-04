@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 /// Mimi decoder packed streaming state blob (fp16 flat tensor).
 ///
@@ -25,23 +25,25 @@ public struct MimiStateLayout: Sendable {
     public static func load(from url: URL) throws -> MimiStateLayout {
         let data = try Data(contentsOf: url)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let totalElems = json["total_elems"] as? Int,
-              let sCap = json["s_cap"] as? Int,
-              let tStep = json["t_step"] as? Int,
-              let headDim = json["head_dim"] as? Int,
-              let numHeads = json["num_heads"] as? Int,
-              let numTxLayers = json["num_tx_layers"] as? Int,
-              let slotsRaw = json["slots"] as? [[String: Any]]
+            let totalElems = json["total_elems"] as? Int,
+            let sCap = json["s_cap"] as? Int,
+            let tStep = json["t_step"] as? Int,
+            let headDim = json["head_dim"] as? Int,
+            let numHeads = json["num_heads"] as? Int,
+            let numTxLayers = json["num_tx_layers"] as? Int,
+            let slotsRaw = json["slots"] as? [[String: Any]]
         else {
-            throw NSError(domain: "MimiStateLayout", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "invalid layout json"
-            ])
+            throw NSError(
+                domain: "MimiStateLayout", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "invalid layout json"
+                ])
         }
         let slots: [Slot] = slotsRaw.compactMap { entry in
             guard let name = entry["name"] as? String,
-                  let shape = entry["shape"] as? [Int],
-                  let offset = entry["offset"] as? Int,
-                  let length = entry["length"] as? Int
+                let shape = entry["shape"] as? [Int],
+                let offset = entry["offset"] as? Int,
+                let length = entry["length"] as? Int
             else { return nil }
             return Slot(name: name, shape: shape, offset: offset, length: length)
         }
@@ -64,10 +66,12 @@ public final class MimiStateBuffer: @unchecked Sendable {
 
     public init(layout: MimiStateLayout) throws {
         self.layout = layout
-        self.currentIn = try MLMultiArray(shape: [NSNumber(value: layout.totalElems)],
-                                          dataType: .float32)
-        self.currentOut = try MLMultiArray(shape: [NSNumber(value: layout.totalElems)],
-                                           dataType: .float32)
+        self.currentIn = try MLMultiArray(
+            shape: [NSNumber(value: layout.totalElems)],
+            dataType: .float32)
+        self.currentOut = try MLMultiArray(
+            shape: [NSNumber(value: layout.totalElems)],
+            dataType: .float32)
         zeroIn()
     }
 

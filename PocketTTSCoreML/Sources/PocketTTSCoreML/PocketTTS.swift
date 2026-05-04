@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 public enum PocketTTSLoadError: Error, CustomStringConvertible {
     case modelNotFound(String)
@@ -60,8 +60,8 @@ public actor PocketTTS {
         cfg.computeUnits = computeUnits
 
         guard let flowMainURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_main"),
-              let flowFlowURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_flow"),
-              let mimiDecURL  = Self.resolveArtifact(artifactsBundle, stem: "mimi_decoder")
+            let flowFlowURL = Self.resolveArtifact(artifactsBundle, stem: "flow_lm_flow"),
+            let mimiDecURL = Self.resolveArtifact(artifactsBundle, stem: "mimi_decoder")
         else {
             throw PocketTTSLoadError.modelNotFound(
                 "Required mlpackage/mlmodelc not present in: \(artifactsBundle.path)"
@@ -69,7 +69,7 @@ public actor PocketTTS {
         }
         let flowMain = try await Self.loadCompiled(flowMainURL, config: cfg)
         let flowFlow = try await Self.loadCompiled(flowFlowURL, config: cfg)
-        let mimiDec  = try await Self.loadCompiled(mimiDecURL,  config: cfg)
+        let mimiDec = try await Self.loadCompiled(mimiDecURL, config: cfg)
 
         // Resolve layer count from the loaded flow_lm_main input shape so
         // that 24L french_24l and 6L en/es/de/it/pt all work. Must happen
@@ -112,13 +112,14 @@ public actor PocketTTS {
         let projURL = artifactsBundle.appendingPathComponent("speaker_proj.safetensors")
         let speakerProj: SpeakerProjection? = try VoiceLoader.loadSpeakerProjection(from: projURL)
 
-        self.orchestrator = Orchestrator(models: .init(
-            flowMain: flowMain, flowFlow: flowFlow,
-            mimiDecoder: mimiDec, mimiLayout: layout,
-            flowPrefill: flowPrefill, textConditioner: textCond,
-            defaultBosEmb: defaultBos,
-            speakerProjection: speakerProj
-        ))
+        self.orchestrator = Orchestrator(
+            models: .init(
+                flowMain: flowMain, flowFlow: flowFlow,
+                mimiDecoder: mimiDec, mimiLayout: layout,
+                flowPrefill: flowPrefill, textConditioner: textCond,
+                defaultBosEmb: defaultBos,
+                speakerProjection: speakerProj
+            ))
 
         // mimi_encoder is loaded lazily on first cloneVoice. Preloading
         // it here adds 10-25s to app startup which is unacceptable for
@@ -131,8 +132,11 @@ public actor PocketTTS {
     /// Compile an `.mlpackage` (or `.mlmodel`) on first load, cache the
     /// compiled `.mlmodelc` alongside the package so subsequent launches
     /// are quick.
-    private static func loadCompiled(_ url: URL, config: MLModelConfiguration) async throws -> MLModel {
-        let cached = url
+    private static func loadCompiled(_ url: URL, config: MLModelConfiguration) async throws
+        -> MLModel
+    {
+        let cached =
+            url
             .deletingPathExtension()
             .appendingPathExtension("mlmodelc")
         let fm = FileManager.default
@@ -199,15 +203,15 @@ public actor PocketTTS {
         guard let speakerProj = orchestrator.models.speakerProjection else {
             throw PocketTTSLoadError.modelNotFound(
                 "speaker_proj.safetensors not found in \(artifactsBundle.path); "
-                + "voice cloning unavailable for this bundle. Regenerate via "
-                + "`python -m pockettts_coreml.convert.export_speaker_proj "
-                + "--language <lang> --out <artifacts_dir>`"
+                    + "voice cloning unavailable for this bundle. Regenerate via "
+                    + "`python -m pockettts_coreml.convert.export_speaker_proj "
+                    + "--language <lang> --out <artifacts_dir>`"
             )
         }
         guard let encoderURL = Self.resolveArtifact(artifactsBundle, stem: "mimi_encoder") else {
             throw PocketTTSLoadError.modelNotFound(
                 "mimi_encoder not present in \(artifactsBundle.path); "
-                + "voice cloning requires it."
+                    + "voice cloning requires it."
             )
         }
 
@@ -221,14 +225,19 @@ public actor PocketTTS {
         cfg.computeUnits = .cpuOnly
 
         let t0 = Date()
-        FileHandle.standardError.write(Data(
-            "[clone-init] loading mimi_encoder from \(encoderURL.lastPathComponent) (computeUnits=.cpuOnly)\n".utf8
-        ))
+        FileHandle.standardError.write(
+            Data(
+                "[clone-init] loading mimi_encoder from \(encoderURL.lastPathComponent) (computeUnits=.cpuOnly)\n"
+                    .utf8
+            ))
         let encoder = try await Self.loadCompiled(encoderURL, config: cfg)
-        FileHandle.standardError.write(Data(
-            String(format: "[clone-init] mimi_encoder MLModel ready in %.2fs\n",
-                   Date().timeIntervalSince(t0)).utf8
-        ))
+        FileHandle.standardError.write(
+            Data(
+                String(
+                    format: "[clone-init] mimi_encoder MLModel ready in %.2fs\n",
+                    Date().timeIntervalSince(t0)
+                ).utf8
+            ))
         let cloner = VoiceCloner(
             encoder: encoder,
             orchestrator: orchestrator,
@@ -271,10 +280,12 @@ public actor PocketTTS {
         // weights / JIT the ANE path. A no-op if not supported; errors
         // are swallowed. flow_lm_flow I/O is fp16.
         do {
-            let c = try MLMultiArray(shape: [1, NSNumber(value: PocketTTSArch.dModel)], dataType: .float16)
+            let c = try MLMultiArray(
+                shape: [1, NSNumber(value: PocketTTSArch.dModel)], dataType: .float16)
             let s = try MLMultiArray(shape: [1, 1], dataType: .float16)
             let t = try MLMultiArray(shape: [1, 1], dataType: .float16)
-            let x = try MLMultiArray(shape: [1, NSNumber(value: PocketTTSArch.latentDim)], dataType: .float16)
+            let x = try MLMultiArray(
+                shape: [1, NSNumber(value: PocketTTSArch.latentDim)], dataType: .float16)
             let provider = try MLDictionaryFeatureProvider(dictionary: [
                 "c": MLFeatureValue(multiArray: c),
                 "s": MLFeatureValue(multiArray: s),

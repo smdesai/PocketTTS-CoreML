@@ -17,8 +17,8 @@
 // the target callable — standard pattern for CFNotificationCenter.
 //
 
-import Foundation
 import ActivityKit
+import Foundation
 
 @MainActor
 final class LiveActivityController {

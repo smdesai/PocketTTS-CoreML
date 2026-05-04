@@ -1,6 +1,6 @@
-import Foundation
-import CoreML
 import Accelerate
+import CoreML
+import Foundation
 
 /// Attention mask builders — ports of `pockettts_coreml.patches.transformer_patched`
 /// helpers used by the reference Python driver. These are called OUTSIDE the
@@ -16,11 +16,10 @@ public enum Masks {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity)
-        for i in 0..<sCapacity { ptr[i] = 0 }
+        for i in 0 ..< sCapacity { ptr[i] = 0 }
         ptr[offset] = fp32ToFp16Bits(1.0)
         return arr
     }
-
 
     public static func additiveAttentionMaskStepFp16(
         offset: Int, sCapacity: Int, context: Int? = nil
@@ -31,9 +30,9 @@ public enum Masks {
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity)
         let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
-        for i in 0..<sCapacity { ptr[i] = negBits }
+        for i in 0 ..< sCapacity { ptr[i] = negBits }
         let lo = context == nil ? 0 : max(0, offset - context! + 1)
-        for i in lo...offset { ptr[i] = zeroBits }
+        for i in lo ... offset { ptr[i] = zeroBits }
         return arr
     }
 
@@ -43,9 +42,9 @@ public enum Masks {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity), NSNumber(value: prefillLen)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity * prefillLen)
-        for i in 0..<(sCapacity * prefillLen) { ptr[i] = 0 }
+        for i in 0 ..< (sCapacity * prefillLen) { ptr[i] = 0 }
         let oneBits = fp32ToFp16Bits(1.0)
-        for j in 0..<prefillLen {
+        for j in 0 ..< prefillLen {
             let row = startOffset + j
             ptr[row * prefillLen + j] = oneBits
         }
@@ -61,11 +60,11 @@ public enum Masks {
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
         let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
-        for i in 0..<total { ptr[i] = negBits }
-        for i in 0..<prefillLen {
+        for i in 0 ..< total { ptr[i] = negBits }
+        for i in 0 ..< prefillLen {
             let pos = startOffset + i
             let lo = context == nil ? 0 : max(0, pos - context! + 1)
-            for k in lo...pos {
+            for k in lo ... pos {
                 ptr[i * sCapacity + k] = zeroBits
             }
         }
@@ -93,9 +92,9 @@ public enum Masks {
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
         let total = sCapacity * sTextPad
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        for i in 0..<total { ptr[i] = 0 }
+        for i in 0 ..< total { ptr[i] = 0 }
         let oneBits = fp32ToFp16Bits(1.0)
-        for j in 0..<sText {
+        for j in 0 ..< sText {
             let row = startOffset + j
             ptr[row * sTextPad + j] = oneBits
         }
@@ -122,20 +121,21 @@ public enum Masks {
         let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
         // Fill all masked.
-        for i in 0..<total { ptr[i] = negBits }
+        for i in 0 ..< total { ptr[i] = negBits }
         // Real rows: causal window.
-        for i in 0..<sText {
+        for i in 0 ..< sText {
             let pos = startOffset + i
-            for k in 0...pos { ptr[i * sCapacity + k] = zeroBits }
+            for k in 0 ... pos { ptr[i * sCapacity + k] = zeroBits }
         }
         // Padding rows: copy last real row (i = sText - 1). Use memcpy
         // for speed.
         let lastRowBase = (sText - 1) * sCapacity
-        for i in sText..<sTextPad {
+        for i in sText ..< sTextPad {
             let dstBase = i * sCapacity
-            memcpy(ptr.advanced(by: dstBase),
-                   ptr.advanced(by: lastRowBase),
-                   sCapacity * MemoryLayout<UInt16>.stride)
+            memcpy(
+                ptr.advanced(by: dstBase),
+                ptr.advanced(by: lastRowBase),
+                sCapacity * MemoryLayout<UInt16>.stride)
         }
         return arr
     }
@@ -159,9 +159,9 @@ public enum Masks {
         let shape: [NSNumber] = [1, 1, 1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0..<sCapacity { buf[i] = attnMaskNeg }
+            for i in 0 ..< sCapacity { buf[i] = attnMaskNeg }
             let lo = context == nil ? 0 : max(0, offset - context! + 1)
-            for i in lo...offset { buf[i] = 0.0 }
+            for i in lo ... offset { buf[i] = 0.0 }
         }
         return arr
     }
@@ -172,7 +172,7 @@ public enum Masks {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0..<sCapacity { buf[i] = 0.0 }
+            for i in 0 ..< sCapacity { buf[i] = 0.0 }
             buf[offset] = 1.0
         }
         return arr
@@ -187,8 +187,8 @@ public enum Masks {
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
         let n = sCapacity * prefillLen
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0..<n { buf[i] = 0.0 }
-            for j in 0..<prefillLen {
+            for i in 0 ..< n { buf[i] = 0.0 }
+            for j in 0 ..< prefillLen {
                 let row = startOffset + j
                 buf[row * prefillLen + j] = 1.0
             }
@@ -205,11 +205,11 @@ public enum Masks {
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
         let totalQ = prefillLen * sCapacity
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0..<totalQ { buf[i] = attnMaskNeg }
-            for i in 0..<prefillLen {
+            for i in 0 ..< totalQ { buf[i] = attnMaskNeg }
+            for i in 0 ..< prefillLen {
                 let pos = startOffset + i
                 let lo = context == nil ? 0 : max(0, pos - context! + 1)
-                for k in lo...pos {
+                for k in lo ... pos {
                     buf[i * sCapacity + k] = 0.0
                 }
             }

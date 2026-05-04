@@ -16,8 +16,8 @@
 // or 48 kHz — the downstream path handles it.
 //
 
-import Foundation
 import AVFoundation
+import Foundation
 
 @MainActor
 final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
@@ -65,15 +65,16 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// already awaited `requestPermission()` and confirmed it returned
     /// true. Throws if the audio session or recorder can't be set up.
     func start() throws {
-        stop()   // idempotent guard
+        stop()  // idempotent guard
 
         let session = AVAudioSession.sharedInstance()
         // .playAndRecord lets the demo still play back TTS audio after
         // recording without tearing down the session. .defaultToSpeaker
         // avoids the routing-to-earpiece surprise when mixed with
         // a bluetooth preview.
-        try session.setCategory(.playAndRecord, mode: .default,
-                                options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setCategory(
+            .playAndRecord, mode: .default,
+            options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true, options: [])
 
         let url = FileManager.default.temporaryDirectory
@@ -94,17 +95,21 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         rec.delegate = self
         rec.isMeteringEnabled = false
         guard rec.prepareToRecord() else {
-            throw NSError(domain: "CloneRecorder", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "prepareToRecord failed"
-            ])
+            throw NSError(
+                domain: "CloneRecorder", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "prepareToRecord failed"
+                ])
         }
         // Hard-cap the duration. AVAudioRecorder will fire the delegate's
         // audioRecorderDidFinishRecording(_:successfully:) callback at
         // this point, which flips isRecording back to false.
         guard rec.record(forDuration: Self.maxDuration) else {
-            throw NSError(domain: "CloneRecorder", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "record(forDuration:) returned false"
-            ])
+            throw NSError(
+                domain: "CloneRecorder", code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "record(forDuration:) returned false"
+                ])
         }
 
         self.recorder = rec
@@ -130,7 +135,7 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         tickTask?.cancel()
         tickTask = nil
         if let r = recorder, r.isRecording {
-            r.stop()   // triggers audioRecorderDidFinishRecording(_:successfully:)
+            r.stop()  // triggers audioRecorderDidFinishRecording(_:successfully:)
         }
         // Leave isRecording as-is; the delegate callback flips it.
     }
@@ -141,7 +146,8 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func teardown() {
         stop()
         recorder = nil
-        try? AVAudioSession.sharedInstance().setActive(false,
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
             options: [.notifyOthersOnDeactivation])
     }
 

@@ -1,7 +1,7 @@
-import Foundation
-import CoreML
 import AVFoundation
 import Accelerate
+import CoreML
+import Foundation
 
 /// Two-stage voice cloning pipeline driven entirely in Swift.
 ///
@@ -76,8 +76,9 @@ public final class VoiceCloner: @unchecked Sendable {
         func log(_ phase: String, _ startedAt: Date) {
             let dt = Date().timeIntervalSince(startedAt)
             let total = Date().timeIntervalSince(t0)
-            let msg = String(format: "[clone] %@ took %.2fs (total %.2fs)\n",
-                             phase, dt, total)
+            let msg = String(
+                format: "[clone] %@ took %.2fs (total %.2fs)\n",
+                phase, dt, total)
             FileHandle.standardError.write(Data(msg.utf8))
         }
 
@@ -89,7 +90,7 @@ public final class VoiceCloner: @unchecked Sendable {
         let target = 96_000
         var buffer = [Float](repeating: 0, count: target)
         let copy = min(samples.count, target)
-        for i in 0..<copy { buffer[i] = samples[i] }
+        for i in 0 ..< copy { buffer[i] = samples[i] }
 
         let waveform = try MLMultiArray(
             shape: [1, 1, NSNumber(value: target)], dataType: .float16
@@ -107,9 +108,11 @@ public final class VoiceCloner: @unchecked Sendable {
         log("mimi_encoder predict", tEnc)
 
         guard let latents = result.featureValue(for: "latents")?.multiArrayValue else {
-            throw NSError(domain: "VoiceCloner", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "mimi_encoder returned no latents"
-            ])
+            throw NSError(
+                domain: "VoiceCloner", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "mimi_encoder returned no latents"
+                ])
         }
 
         // --- Stage 2a: apply speaker projection ----------------------------
@@ -133,7 +136,7 @@ public final class VoiceCloner: @unchecked Sendable {
         let voiceKV = try MLMultiArray(shape: kvShape, dataType: .float16)
         let total = voiceKV.count
         let kvPtr = voiceKV.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        for i in 0..<total { kvPtr[i] = 0 }
+        for i in 0 ..< total { kvPtr[i] = 0 }
         log("alloc+zero KV", tKV)
 
         let tPrefill = Date()
@@ -166,10 +169,14 @@ public final class VoiceCloner: @unchecked Sendable {
             interleaved: false
         )!
 
-        let needResample = srcFormat.sampleRate != targetFormat.sampleRate
+        let needResample =
+            srcFormat.sampleRate != targetFormat.sampleRate
             || srcFormat.channelCount != 1
         if !needResample {
-            guard let buf = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
+            guard
+                let buf = AVAudioPCMBuffer(
+                    pcmFormat: srcFormat, frameCapacity: AVAudioFrameCount(file.length))
+            else {
                 throw NSError(domain: "VoiceCloner", code: 2)
             }
             try file.read(into: buf)
@@ -181,12 +188,16 @@ public final class VoiceCloner: @unchecked Sendable {
         }
 
         guard let conv = AVAudioConverter(from: srcFormat, to: targetFormat) else {
-            throw NSError(domain: "VoiceCloner", code: 4, userInfo: [
-                NSLocalizedDescriptionKey: "Cannot create AVAudioConverter"
-            ])
+            throw NSError(
+                domain: "VoiceCloner", code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Cannot create AVAudioConverter"
+                ])
         }
-        guard let src = AVAudioPCMBuffer(pcmFormat: srcFormat,
-                                         frameCapacity: AVAudioFrameCount(file.length))
+        guard
+            let src = AVAudioPCMBuffer(
+                pcmFormat: srcFormat,
+                frameCapacity: AVAudioFrameCount(file.length))
         else { throw NSError(domain: "VoiceCloner", code: 5) }
         try file.read(into: src)
 

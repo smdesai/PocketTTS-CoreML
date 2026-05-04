@@ -1,5 +1,6 @@
-import XCTest
 import Foundation
+import XCTest
+
 @testable import PocketTTSCoreML
 
 /// Measure RTF for the canonical prompt and assert ≤ 0.40 on Mac. Skipped
@@ -9,8 +10,9 @@ final class BenchmarkTests: XCTestCase {
     func testMacRTF() async throws {
         try XCTSkipUnless(FixturePaths.artifactsAvailable, "mlpackages missing")
         try XCTSkipUnless(FixturePaths.tokenizerAvailable, "tokenizer missing")
-        try XCTSkipUnless(FixturePaths.prefilledVoiceAvailable,
-                          "alba_prefilled.safetensors missing — regenerate via export_full_prefill.py")
+        try XCTSkipUnless(
+            FixturePaths.prefilledVoiceAvailable,
+            "alba_prefilled.safetensors missing — regenerate via export_full_prefill.py")
 
         let tts = try await PocketTTS(
             artifactsBundle: FixturePaths.artifactsDir,
@@ -22,7 +24,7 @@ final class BenchmarkTests: XCTestCase {
 
         let iterations = 3
         var best = Double.infinity
-        for iter in 0..<iterations {
+        for iter in 0 ..< iterations {
             let t0 = Date()
             var samples = 0
             let stream = await tts.generate(
@@ -41,7 +43,8 @@ final class BenchmarkTests: XCTestCase {
         print("[Benchmark] best RTF = \(best)")
 
         // Phase 4A gate: Mac RTF ≤ 0.40.
-        XCTAssertLessThanOrEqual(best, 0.40,
+        XCTAssertLessThanOrEqual(
+            best, 0.40,
             "Best Mac RTF \(best) exceeds the 0.40 gate")
     }
 }
