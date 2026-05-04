@@ -55,9 +55,6 @@ let package = Package(
             resources: [
                 // No bundled resources by default; caller passes URLs.
             ],
-            swiftSettings: [
-                .enableUpcomingFeature("BareSlashRegexLiterals")
-            ],
             linkerSettings: [
                 .linkedFramework("CoreML"),
                 .linkedFramework("Accelerate"),
@@ -73,7 +70,8 @@ let package = Package(
         .testTarget(
             name: "PocketTTSCoreMLTests",
             dependencies: ["PocketTTSCoreML"],
-            path: "Tests/PocketTTSCoreMLTests"
+            path: "Tests/PocketTTSCoreMLTests",
+            exclude: ["Fixtures/README.md"]
         ),
     ],
     cxxLanguageStandard: .cxx17

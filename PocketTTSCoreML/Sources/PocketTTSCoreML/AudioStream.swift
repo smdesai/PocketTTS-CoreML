@@ -8,8 +8,25 @@ public enum AudioStream {
     public static func frameToPCM16(_ array: MLMultiArray, clip: Bool = true) -> Data {
         let n = array.count
         var floats = [Float](repeating: 0, count: n)
-        array.withUnsafeBufferPointer(ofType: Float.self) { src in
-            memcpy(&floats, src.baseAddress!, n * MemoryLayout<Float>.stride)
+        var int16s = [Int16](repeating: 0, count: n)
+        return frameToPCM16(array, clip: clip, floats: &floats, int16s: &int16s)
+    }
+
+    /// Convert using caller-owned scratch buffers to avoid per-frame heap churn.
+    public static func frameToPCM16(
+        _ array: MLMultiArray,
+        clip: Bool = true,
+        floats: inout [Float],
+        int16s: inout [Int16]
+    ) -> Data {
+        let n = array.count
+        guard n > 0 else { return Data() }
+        if floats.count < n { floats = [Float](repeating: 0, count: n) }
+        if int16s.count < n { int16s = [Int16](repeating: 0, count: n) }
+        _ = array.withUnsafeBufferPointer(ofType: Float.self) { src in
+            floats.withUnsafeMutableBufferPointer { dst in
+                memcpy(dst.baseAddress!, src.baseAddress!, n * MemoryLayout<Float>.stride)
+            }
         }
         if clip {
             // Clamp to [-1, 1] to avoid wraparound.
@@ -19,10 +36,9 @@ public enum AudioStream {
         }
         var scale: Float = 32767.0
         vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(n))
-        var int16s = [Int16](repeating: 0, count: n)
         vDSP_vfixr16(floats, 1, &int16s, 1, vDSP_Length(n))
         return int16s.withUnsafeBufferPointer { buf in
-            Data(buffer: buf)
+            Data(buffer: UnsafeBufferPointer(start: buf.baseAddress!, count: n))
         }
     }
 
@@ -75,18 +91,25 @@ public enum AudioStream {
                 dataLen = size
                 break
             }
-            cursor += 8 + size
+            cursor += 8 + size + (size & 1)
         }
         guard dataOffset >= 0 else {
             throw NSError(
                 domain: "AudioStream", code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "WAV missing data chunk"])
         }
+        guard dataLen >= 0, dataOffset + dataLen <= data.count else {
+            throw NSError(
+                domain: "AudioStream", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "WAV data chunk is truncated"])
+        }
         let pcm = data.subdata(in: dataOffset ..< (dataOffset + dataLen))
         let count = dataLen / 2
         var ints = [Int16](repeating: 0, count: count)
-        pcm.withUnsafeBytes { raw in
-            memcpy(&ints, raw.baseAddress!, count * 2)
+        _ = pcm.withUnsafeBytes { raw in
+            ints.withUnsafeMutableBufferPointer { dst in
+                memcpy(dst.baseAddress!, raw.baseAddress!, count * 2)
+            }
         }
         var floats = [Float](repeating: 0, count: count)
         for i in 0 ..< count { floats[i] = Float(ints[i]) / 32768.0 }

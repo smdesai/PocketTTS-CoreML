@@ -20,7 +20,9 @@ public enum TextChunker {
         removeSemicolons: Bool = false
     ) -> Preparation {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        precondition(!text.isEmpty, "Text prompt cannot be empty")
+        guard !text.isEmpty else {
+            return Preparation(text: "", framesAfterEosGuess: 3)
+        }
         text =
             text
             .replacingOccurrences(of: "\n", with: " ")
@@ -61,6 +63,7 @@ public enum TextChunker {
             padWithSpacesForShortInputs: padWithSpacesForShortInputs,
             removeSemicolons: removeSemicolons
         ).text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prep.isEmpty else { return [] }
 
         let tokens = tokenizer.encodeAsInt(prep)
         // Matches reference: `_, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0]`

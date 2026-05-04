@@ -13,6 +13,7 @@ public enum SafetensorsError: Error, CustomStringConvertible {
     case missingKey(String)
     case unsupportedDType(String)
     case shapeMismatch(expected: [Int], actual: [Int])
+    case invalidTensorData(String)
 
     public var description: String {
         switch self {
@@ -22,6 +23,7 @@ public enum SafetensorsError: Error, CustomStringConvertible {
         case .unsupportedDType(let s): return "unsupported safetensors dtype: \(s)"
         case .shapeMismatch(let e, let a):
             return "safetensors shape mismatch: expected \(e), got \(a)"
+        case .invalidTensorData(let s): return "invalid safetensors tensor data: \(s)"
         }
     }
 }
@@ -67,10 +69,12 @@ public final class SafetensorsReader: @unchecked Sendable {
         self.data = try Data(contentsOf: url, options: .alwaysMapped)
         guard data.count >= 8 else { throw SafetensorsError.fileTooSmall }
 
-        let headerSize = Int(
+        let headerSize64 =
             data.withUnsafeBytes { raw -> UInt64 in
                 raw.load(fromByteOffset: 0, as: UInt64.self).littleEndian
-            })
+            }
+        guard headerSize64 <= UInt64(Int.max) else { throw SafetensorsError.fileTooSmall }
+        let headerSize = Int(headerSize64)
         guard 8 + headerSize <= data.count else { throw SafetensorsError.fileTooSmall }
         let headerData = data.subdata(in: 8 ..< (8 + headerSize))
 
@@ -98,7 +102,23 @@ public final class SafetensorsReader: @unchecked Sendable {
             guard let dtype = SafetensorsDType(rawValue: dtypeStr) else {
                 throw SafetensorsError.unsupportedDType(dtypeStr)
             }
-            let shape = shapeRaw.compactMap { ($0 as? NSNumber)?.intValue }
+            var shape: [Int] = []
+            shape.reserveCapacity(shapeRaw.count)
+            for rawDim in shapeRaw {
+                guard let dim = (rawDim as? NSNumber)?.intValue, dim >= 0 else {
+                    throw SafetensorsError.badHeader
+                }
+                shape.append(dim)
+            }
+            guard let elementCount = Self.checkedElementCount(shape),
+                let expectedBytes = Self.checkedByteLength(
+                    elementCount: elementCount, dtype: dtype),
+                start >= 0, end >= start,
+                end - start == expectedBytes,
+                end <= data.count - blobOffset
+            else {
+                throw SafetensorsError.invalidTensorData(name)
+            }
             tensors[name] = SafetensorsTensorInfo(
                 name: name,
                 dtype: dtype,
@@ -108,6 +128,20 @@ public final class SafetensorsReader: @unchecked Sendable {
             )
         }
         self.tensors = tensors
+    }
+
+    public func withUnsafeTensorBytes<R>(
+        for name: String,
+        _ body: (UnsafeRawBufferPointer, SafetensorsTensorInfo) throws -> R
+    ) throws -> R {
+        guard let info = tensors[name] else {
+            throw SafetensorsError.missingKey(name)
+        }
+        return try data.withUnsafeBytes { raw in
+            let base = raw.baseAddress!.advanced(by: info.byteOffset)
+            let tensorBytes = UnsafeRawBufferPointer(start: base, count: info.byteLength)
+            return try body(tensorBytes, info)
+        }
     }
 
     /// Raw bytes for tensor `name`. Zero-copy — backed by the same mmap.
@@ -121,34 +155,29 @@ public final class SafetensorsReader: @unchecked Sendable {
     /// Load as `[Float]` (fp32). Converts F16/BF16/F32 transparently.
     public func float32Array(for name: String) throws -> (values: [Float], shape: [Int]) {
         guard let info = tensors[name] else { throw SafetensorsError.missingKey(name) }
-        let blob = try bytes(for: name)
         let count = info.elementCount
         var out = [Float](repeating: 0, count: count)
 
-        switch info.dtype {
-        case .F32:
-            blob.withUnsafeBytes { raw in
-                memcpy(&out, raw.baseAddress!, count * 4)
-            }
-        case .F16:
-            // Use vDSP-style manual fp16->fp32 conversion.
-            blob.withUnsafeBytes { raw in
+        try withUnsafeTensorBytes(for: name) { raw, info in
+            switch info.dtype {
+            case .F32:
+                _ = out.withUnsafeMutableBufferPointer { dst in
+                    memcpy(dst.baseAddress!, raw.baseAddress!, count * 4)
+                }
+            case .F16:
                 let src = raw.bindMemory(to: UInt16.self)
                 for i in 0 ..< count {
                     out[i] = Self.fp16ToFloat(src[i])
                 }
-            }
-        case .BF16:
-            blob.withUnsafeBytes { raw in
+            case .BF16:
                 let src = raw.bindMemory(to: UInt16.self)
                 for i in 0 ..< count {
-                    // bf16 = upper 16 bits of fp32; zero-extend to fp32.
                     let bits: UInt32 = UInt32(src[i]) << 16
                     out[i] = Float(bitPattern: bits)
                 }
+            default:
+                throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
             }
-        default:
-            throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
         }
         return (out, info.shape)
     }
@@ -156,23 +185,39 @@ public final class SafetensorsReader: @unchecked Sendable {
     /// Load as `[Int64]`. Accepts I64 or I32.
     public func int64Array(for name: String) throws -> (values: [Int64], shape: [Int]) {
         guard let info = tensors[name] else { throw SafetensorsError.missingKey(name) }
-        let blob = try bytes(for: name)
         let count = info.elementCount
         var out = [Int64](repeating: 0, count: count)
-        switch info.dtype {
-        case .I64:
-            blob.withUnsafeBytes { raw in
-                memcpy(&out, raw.baseAddress!, count * 8)
-            }
-        case .I32:
-            blob.withUnsafeBytes { raw in
+        try withUnsafeTensorBytes(for: name) { raw, info in
+            switch info.dtype {
+            case .I64:
+                _ = out.withUnsafeMutableBufferPointer { dst in
+                    memcpy(dst.baseAddress!, raw.baseAddress!, count * 8)
+                }
+            case .I32:
                 let src = raw.bindMemory(to: Int32.self)
                 for i in 0 ..< count { out[i] = Int64(src[i]) }
+            default:
+                throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
             }
-        default:
-            throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
         }
         return (out, info.shape)
+    }
+
+    private static func checkedElementCount(_ shape: [Int]) -> Int? {
+        var count = 1
+        for dim in shape {
+            let result = count.multipliedReportingOverflow(by: dim)
+            if result.overflow { return nil }
+            count = result.partialValue
+        }
+        return count
+    }
+
+    private static func checkedByteLength(
+        elementCount: Int, dtype: SafetensorsDType
+    ) -> Int? {
+        let result = elementCount.multipliedReportingOverflow(by: dtype.bytesPerElement)
+        return result.overflow ? nil : result.partialValue
     }
 
     /// Convert an IEEE 754 half-precision (fp16) bit pattern to Float.

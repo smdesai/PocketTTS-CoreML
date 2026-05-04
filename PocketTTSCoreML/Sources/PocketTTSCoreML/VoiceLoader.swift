@@ -121,7 +121,10 @@ public enum VoiceLoader {
     }
 
     static func loadPrefilled(reader: SafetensorsReader, sourceURL: URL) throws -> VoiceHandle {
-        let (kvFlat, kvShape) = try reader.float32Array(for: "flow_kv_rank5")
+        guard let kvInfo = reader.tensors["flow_kv_rank5"] else {
+            throw SafetensorsError.missingKey("flow_kv_rank5")
+        }
+        let kvShape = kvInfo.shape
         // Expected shape: [12, 1, 256, 16, 64]
         let expected = [
             2 * PocketTTSArch.flowLayers, 1, PocketTTSArch.flowSCap,
@@ -136,16 +139,29 @@ public enum VoiceLoader {
             shape: kvShape.map { NSNumber(value: $0) },
             dataType: .float16
         )
-        let n = kvFlat.count
+        let n = arr.count
         let dstPtr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: n)
-        kvFlat.withUnsafeBufferPointer { src in
-            Float16Ops.convertFp32ToFp16(srcPtr: src.baseAddress!, dstPtr: dstPtr, count: n)
+        try copyTensorToFp16(reader: reader, name: "flow_kv_rank5", dstPtr: dstPtr, count: n)
+
+        let (offArr, offShape) = try reader.int64Array(for: "flow_offset")
+        guard offShape == [1], offArr.count == 1 else {
+            throw SafetensorsError.shapeMismatch(expected: [1], actual: offShape)
+        }
+        let offset = Int(offArr[0])
+        guard offset >= 0 && offset <= PocketTTSArch.flowSCap else {
+            throw NSError(
+                domain: "VoiceLoader", code: 5,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "flow_offset \(offset) is outside 0...\(PocketTTSArch.flowSCap)"
+                ])
         }
 
-        let (offArr, _) = try reader.int64Array(for: "flow_offset")
-        let offset = Int(offArr[0])
-
-        let (bosEmb, _) = try reader.float32Array(for: "bos_emb")
+        let (bosEmb, bosShape) = try reader.float32Array(for: "bos_emb")
+        guard bosShape == [PocketTTSArch.latentDim] else {
+            throw SafetensorsError.shapeMismatch(
+                expected: [PocketTTSArch.latentDim], actual: bosShape)
+        }
 
         var promptUTF8: Data? = nil
         if reader.tensors["prompt_utf8"] != nil {
@@ -155,7 +171,10 @@ public enum VoiceLoader {
         var noiseSeq: [[Float]]? = nil
         if reader.tensors["noise_seq"] != nil {
             let (flat, shape) = try reader.float32Array(for: "noise_seq")
-            precondition(shape.count == 2)
+            guard shape.count == 2, shape[1] == PocketTTSArch.latentDim else {
+                throw SafetensorsError.shapeMismatch(
+                    expected: [-1, PocketTTSArch.latentDim], actual: shape)
+            }
             let steps = shape[0]
             let width = shape[1]
             var seq: [[Float]] = []
@@ -205,7 +224,10 @@ public enum VoiceLoader {
             guard reader.tensors[cacheKey] != nil, reader.tensors[offKey] != nil else {
                 throw SafetensorsError.missingKey(cacheKey)
             }
-            let (cache, cshape) = try reader.float32Array(for: cacheKey)
+            guard let cacheInfo = reader.tensors[cacheKey] else {
+                throw SafetensorsError.missingKey(cacheKey)
+            }
+            let cshape = cacheInfo.shape
             // Shape: [2, 1, T_voice, H, D]
             guard cshape.count == 5, cshape[0] == 2, cshape[1] == 1,
                 cshape[3] == PocketTTSArch.flowHeads, cshape[4] == PocketTTSArch.flowHeadDim
@@ -216,8 +238,19 @@ public enum VoiceLoader {
                 )
             }
             let tVoice = cshape[2]
-            let (offArr, _) = try reader.int64Array(for: offKey)
+            let (offArr, offShape) = try reader.int64Array(for: offKey)
+            guard offShape == [1], offArr.count == 1 else {
+                throw SafetensorsError.shapeMismatch(expected: [1], actual: offShape)
+            }
             let offset = Int(offArr[0])
+            guard offset >= 0 && offset <= tVoice && offset <= PocketTTSArch.flowSCap else {
+                throw NSError(
+                    domain: "VoiceLoader", code: 6,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "voice KV offset \(offset) is outside available slots 0...\(min(tVoice, PocketTTSArch.flowSCap))"
+                    ])
+            }
             if let prior = voiceOffset, prior != offset {
                 throw NSError(
                     domain: "VoiceLoader", code: 4,
@@ -227,45 +260,23 @@ public enum VoiceLoader {
                     ])
             }
             voiceOffset = offset
-            // NaN-sanitize reference cache (reference fills unwritten slots
-            // with NaN; flow_lm_prefill requires finite inputs everywhere).
-            var sanitized = cache
-            for i in 0 ..< sanitized.count where sanitized[i].isNaN { sanitized[i] = 0 }
-
             // Copy first `offset` slots into rows 2*layer (K) and 2*layer+1 (V).
             // Source layout per K or V: [1, T_voice, H, D] → per slot H*D floats.
-            let copyLen = min(offset, tVoice, PocketTTSArch.flowSCap)
+            let copyLen = offset
             if copyLen == 0 { continue }
             // Convert per-slot fp32 → fp16 on the fly.
-            let kBase = 0  // k occupies src[0 * tVoice * H * D ..]
-            let vBase = tVoice * perSlot  // v occupies src[1 * tVoice * H * D ..]
             let dstKBase = (2 * layer) * rowStride
             let dstVBase = (2 * layer + 1) * rowStride
-            sanitized.withUnsafeBufferPointer { sp in
-                var buf = [Float](repeating: 0, count: perSlot)
-                for s in 0 ..< copyLen {
-                    // K slot s
-                    let srcK = sp.baseAddress!.advanced(by: kBase + s * perSlot)
-                    for i in 0 ..< perSlot { buf[i] = srcK[i] }
-                    buf.withUnsafeBufferPointer { bp in
-                        Float16Ops.convertFp32ToFp16(
-                            srcPtr: bp.baseAddress!,
-                            dstPtr: dstPtr.advanced(by: dstKBase + s * perSlot),
-                            count: perSlot
-                        )
-                    }
-                    // V slot s
-                    let srcV = sp.baseAddress!.advanced(by: vBase + s * perSlot)
-                    for i in 0 ..< perSlot { buf[i] = srcV[i] }
-                    buf.withUnsafeBufferPointer { bp in
-                        Float16Ops.convertFp32ToFp16(
-                            srcPtr: bp.baseAddress!,
-                            dstPtr: dstPtr.advanced(by: dstVBase + s * perSlot),
-                            count: perSlot
-                        )
-                    }
-                }
-            }
+            try copyVoiceCacheTensorToKV(
+                reader: reader,
+                name: cacheKey,
+                tVoice: tVoice,
+                copyLen: copyLen,
+                perSlot: perSlot,
+                dstPtr: dstPtr,
+                dstKBase: dstKBase,
+                dstVBase: dstVBase
+            )
         }
         guard let voff = voiceOffset else {
             throw SafetensorsError.missingKey("transformer.layers.0.self_attn/offset")
@@ -311,8 +322,10 @@ public enum VoiceLoader {
         var floats = [Float](repeating: 0, count: n)
         switch kvArr.dataType {
         case .float32:
-            kvArr.withUnsafeBufferPointer(ofType: Float.self) { src in
-                memcpy(&floats, src.baseAddress!, n * MemoryLayout<Float>.stride)
+            _ = kvArr.withUnsafeBufferPointer(ofType: Float.self) { src in
+                floats.withUnsafeMutableBufferPointer { dst in
+                    memcpy(dst.baseAddress!, src.baseAddress!, n * MemoryLayout<Float>.stride)
+                }
             }
         case .float16:
             let srcPtr = kvArr.dataPointer.bindMemory(to: UInt16.self, capacity: n)
@@ -361,6 +374,14 @@ public enum VoiceLoader {
         precondition(
             kv.count == 2 * PocketTTSArch.flowLayers * PocketTTSArch.flowSCap
                 * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim)
+        guard voiceOffset >= 0 && voiceOffset <= PocketTTSArch.flowSCap else {
+            throw NSError(
+                domain: "VoiceLoader", code: 7,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "voiceOffset \(voiceOffset) is outside 0...\(PocketTTSArch.flowSCap)"
+                ])
+        }
         let H = PocketTTSArch.flowHeads
         let D = PocketTTSArch.flowHeadDim
         let L = PocketTTSArch.flowLayers
@@ -383,19 +404,21 @@ public enum VoiceLoader {
             // Copy first voiceOffset slots of K then V into fp32 scratch.
             // Layout [2, 1, voiceOffset, H, D]: K occupies [0..voiceOffset*H*D),
             // V occupies [voiceOffset*H*D..2*voiceOffset*H*D).
-            f32.withUnsafeMutableBufferPointer { dst in
-                // K rows.
-                Float16Ops.convertFp16ToFp32(
-                    srcPtr: srcPtr.advanced(by: kBase),
-                    dstPtr: dst.baseAddress!,
-                    count: voiceOffset * perSlot
-                )
-                // V rows.
-                Float16Ops.convertFp16ToFp32(
-                    srcPtr: srcPtr.advanced(by: vBase),
-                    dstPtr: dst.baseAddress!.advanced(by: voiceOffset * perSlot),
-                    count: voiceOffset * perSlot
-                )
+            if voiceOffset > 0 {
+                f32.withUnsafeMutableBufferPointer { dst in
+                    // K rows.
+                    Float16Ops.convertFp16ToFp32(
+                        srcPtr: srcPtr.advanced(by: kBase),
+                        dstPtr: dst.baseAddress!,
+                        count: voiceOffset * perSlot
+                    )
+                    // V rows.
+                    Float16Ops.convertFp16ToFp32(
+                        srcPtr: srcPtr.advanced(by: vBase),
+                        dstPtr: dst.baseAddress!.advanced(by: voiceOffset * perSlot),
+                        count: voiceOffset * perSlot
+                    )
+                }
             }
             let cacheData = f32.withUnsafeBufferPointer { Data(buffer: $0) }
             tensors.append(
@@ -411,5 +434,164 @@ public enum VoiceLoader {
                 ))
         }
         try SafetensorsWriter.write(tensors, to: url)
+    }
+
+    private static func copyTensorToFp16(
+        reader: SafetensorsReader,
+        name: String,
+        dstPtr: UnsafeMutablePointer<UInt16>,
+        count: Int
+    ) throws {
+        try reader.withUnsafeTensorBytes(for: name) { raw, info in
+            guard info.elementCount == count else {
+                throw SafetensorsError.shapeMismatch(expected: [count], actual: info.shape)
+            }
+            switch info.dtype {
+            case .F16:
+                memcpy(dstPtr, raw.baseAddress!, count * MemoryLayout<UInt16>.stride)
+            case .F32:
+                let src = raw.bindMemory(to: Float.self)
+                Float16Ops.convertFp32ToFp16(
+                    srcPtr: src.baseAddress!, dstPtr: dstPtr, count: count)
+            case .BF16:
+                var scratch = [Float](repeating: 0, count: count)
+                let src = raw.bindMemory(to: UInt16.self)
+                for i in 0 ..< count {
+                    let bits = UInt32(src[i]) << 16
+                    scratch[i] = Float(bitPattern: bits)
+                }
+                scratch.withUnsafeBufferPointer { sp in
+                    Float16Ops.convertFp32ToFp16(
+                        srcPtr: sp.baseAddress!, dstPtr: dstPtr, count: count)
+                }
+            default:
+                throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
+            }
+        }
+    }
+
+    private static func copyVoiceCacheTensorToKV(
+        reader: SafetensorsReader,
+        name: String,
+        tVoice: Int,
+        copyLen: Int,
+        perSlot: Int,
+        dstPtr: UnsafeMutablePointer<UInt16>,
+        dstKBase: Int,
+        dstVBase: Int
+    ) throws {
+        try reader.withUnsafeTensorBytes(for: name) { raw, info in
+            let kBase = 0
+            let vBase = tVoice * perSlot
+            switch info.dtype {
+            case .F32:
+                let src = raw.bindMemory(to: Float.self)
+                var scratch = [Float](repeating: 0, count: perSlot)
+                for s in 0 ..< copyLen {
+                    copySanitizedFp32(
+                        src.baseAddress!.advanced(by: kBase + s * perSlot),
+                        into: &scratch,
+                        count: perSlot
+                    )
+                    scratch.withUnsafeBufferPointer { sp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: sp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstKBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                    copySanitizedFp32(
+                        src.baseAddress!.advanced(by: vBase + s * perSlot),
+                        into: &scratch,
+                        count: perSlot
+                    )
+                    scratch.withUnsafeBufferPointer { sp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: sp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstVBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                }
+            case .F16:
+                let src = raw.bindMemory(to: UInt16.self)
+                for s in 0 ..< copyLen {
+                    copySanitizedFp16(
+                        src.baseAddress!.advanced(by: kBase + s * perSlot),
+                        dstPtr.advanced(by: dstKBase + s * perSlot),
+                        count: perSlot
+                    )
+                    copySanitizedFp16(
+                        src.baseAddress!.advanced(by: vBase + s * perSlot),
+                        dstPtr.advanced(by: dstVBase + s * perSlot),
+                        count: perSlot
+                    )
+                }
+            case .BF16:
+                let src = raw.bindMemory(to: UInt16.self)
+                var scratch = [Float](repeating: 0, count: perSlot)
+                for s in 0 ..< copyLen {
+                    copyBF16AsSanitizedFp32(
+                        src.baseAddress!.advanced(by: kBase + s * perSlot),
+                        into: &scratch,
+                        count: perSlot
+                    )
+                    scratch.withUnsafeBufferPointer { sp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: sp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstKBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                    copyBF16AsSanitizedFp32(
+                        src.baseAddress!.advanced(by: vBase + s * perSlot),
+                        into: &scratch,
+                        count: perSlot
+                    )
+                    scratch.withUnsafeBufferPointer { sp in
+                        Float16Ops.convertFp32ToFp16(
+                            srcPtr: sp.baseAddress!,
+                            dstPtr: dstPtr.advanced(by: dstVBase + s * perSlot),
+                            count: perSlot
+                        )
+                    }
+                }
+            default:
+                throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
+            }
+        }
+    }
+
+    private static func copySanitizedFp32(
+        _ src: UnsafePointer<Float>, into dst: inout [Float], count: Int
+    ) {
+        for i in 0 ..< count {
+            let value = src[i]
+            dst[i] = value.isNaN ? 0 : value
+        }
+    }
+
+    private static func copySanitizedFp16(
+        _ src: UnsafePointer<UInt16>, _ dst: UnsafeMutablePointer<UInt16>, count: Int
+    ) {
+        for i in 0 ..< count {
+            let value = src[i]
+            dst[i] = isFp16NaN(value) ? 0 : value
+        }
+    }
+
+    private static func copyBF16AsSanitizedFp32(
+        _ src: UnsafePointer<UInt16>, into dst: inout [Float], count: Int
+    ) {
+        for i in 0 ..< count {
+            let value = Float(bitPattern: UInt32(src[i]) << 16)
+            dst[i] = value.isNaN ? 0 : value
+        }
+    }
+
+    private static func isFp16NaN(_ value: UInt16) -> Bool {
+        let exponent = value & 0x7C00
+        let mantissa = value & 0x03FF
+        return exponent == 0x7C00 && mantissa != 0
     }
 }
