@@ -69,6 +69,14 @@ public final class TTSViewModel {
     private var tokenizer: Tokenizer? = nil
     private var runningTask: Task<Void, Never>? = nil
 
+    /// Live Activity lifecycle (Lock Screen + Dynamic Island) for the
+    /// current stream / play / clone run. See LiveActivityController.swift.
+    private let liveActivity = LiveActivityController()
+
+    /// Cross-process listener for the widget extension's Stop button.
+    /// Retained so the Darwin observer survives for the app lifetime.
+    private var stopListener: StopNotificationListener?
+
     // MARK: - Init
 
     public init(player: StreamingPlayer = StreamingPlayer()) {
@@ -76,6 +84,13 @@ public final class TTSViewModel {
         // Voice list is populated by load() once the initial language is locked in.
         self.voices = []
         self.selectedVoice = nil
+        // Subscribe to the Stop Darwin notification posted by the Live
+        // Activity's StopPocketTTSIntent. The closure runs on the main
+        // actor so calling self.stop() is safe.
+        self.stopListener = StopNotificationListener { [weak self] in
+            self?.stop()
+        }
+        self.stopListener?.start()
     }
 
     /// Async-load the model. Call from a `.task` modifier on the root view.
@@ -188,6 +203,20 @@ public final class TTSViewModel {
         let destURL = VoiceCatalog.clonedVoiceURL(
             language: selectedLanguage.id, rawName: rawName
         )
+        // Live Activity: indeterminate progress — we start it here and
+        // tear it down in defer so thrown errors + early returns still
+        // clean up. The voice-name field shows the rawName the user
+        // typed (trimmed) so the Lock Screen reads "Cloning: My Voice".
+        let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        liveActivity.start(
+            mode: .cloning,
+            voiceName: trimmedName.isEmpty ? "New voice" : trimmedName,
+            languageName: selectedLanguage.displayName,
+            statusLine: "Cloning voice…"
+        )
+        defer {
+            Task { await self.liveActivity.end() }
+        }
         let handle = try await tts.cloneVoice(from: audioURL)
         try await tts.saveVoice(handle, to: destURL)
         return destURL.deletingPathExtension().lastPathComponent
@@ -355,9 +384,42 @@ public final class TTSViewModel {
         do {
             try player.play(fullPCM: pcm, sampleRate: Double(PocketTTSArch.sampleRate))
             status = "Playing…"
+            // Live Activity: show elapsed / total seconds. Total is
+            // derived from the PCM byte count (16-bit mono @ 24 kHz).
+            let totalSeconds = Double(pcm.count / 2) / Double(PocketTTSArch.sampleRate)
+            liveActivity.start(
+                mode: .playing,
+                voiceName: selectedVoice?.displayName ?? "—",
+                languageName: selectedLanguage.displayName,
+                totalSeconds: totalSeconds,
+                statusLine: status
+            )
+            // Drive elapsed-seconds updates at ~10 Hz until playback
+            // stops. Runs as a detached main-actor task so play()
+            // itself can return immediately (matches the old non-
+            // blocking behaviour).
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let start = Date()
+                while self.player.isPlaying {
+                    let elapsed = Date().timeIntervalSince(start)
+                    let state = PocketTTSActivityAttributes.ContentState(
+                        mode: .playing,
+                        voiceName: self.selectedVoice?.displayName ?? "—",
+                        languageName: self.selectedLanguage.displayName,
+                        elapsedSeconds: min(elapsed, totalSeconds),
+                        totalSeconds: totalSeconds,
+                        statusLine: self.status
+                    )
+                    self.liveActivity.update(state)
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+                await self.liveActivity.end()
+            }
         } catch {
             errorMessage = error.localizedDescription
             status = "Playback failed"
+            await liveActivity.end()
         }
     }
 
@@ -392,6 +454,15 @@ public final class TTSViewModel {
 
         isStreaming = true
         status = "Streaming (1/\(chunks.count))…"
+        // Live Activity: streaming mode with known total chunks.
+        // Updates happen in the consumer loop inside runStream().
+        liveActivity.start(
+            mode: .streaming,
+            voiceName: voice.displayName,
+            languageName: selectedLanguage.displayName,
+            totalChunks: chunks.count,
+            statusLine: status
+        )
         let wallStart = Date()
         do {
             try await runStream(
@@ -404,6 +475,7 @@ public final class TTSViewModel {
             status = "Stream failed"
         }
         isStreaming = false
+        await liveActivity.end()
     }
 
     /// Stop a running stream. Drains the player to finish any already-
@@ -416,6 +488,10 @@ public final class TTSViewModel {
         }
         isGenerating = false
         isStreaming = false
+        // End any live activity unconditionally — Stop is the universal
+        // "I'm done" signal, whether issued from the UI or from the
+        // Live Activity's expanded Stop button.
+        Task { await self.liveActivity.end() }
     }
 
     // MARK: - Streaming machinery
@@ -489,6 +565,16 @@ public final class TTSViewModel {
                     self.stats = s
                 }
                 player.pushChunk(pcm, sampleRate: Double(PocketTTSArch.sampleRate))
+                // Mirror chunk progress into the Live Activity.
+                let activityState = PocketTTSActivityAttributes.ContentState(
+                    mode: .streaming,
+                    voiceName: voice.displayName,
+                    languageName: self.selectedLanguage.displayName,
+                    currentChunk: idx + 1,
+                    totalChunks: chunks.count,
+                    statusLine: self.status
+                )
+                self.liveActivity.update(activityState)
                 _ = totalBytes  // final totals updated after loop
             }
         } catch {
