@@ -282,30 +282,30 @@ investigation. The report stops at localization.
 # Baselines
 .venv/bin/python /tmp/drift_work/run_reference_gen.py /tmp/drift_reference_fp32.wav
 .venv/bin/python /tmp/drift_work/run_coreml_gen.py \
-    Artifacts/en_alba_fp16 /tmp/drift_all_fp16.wav
+    Artifacts/en_fp16 /tmp/drift_all_fp16.wav
 
 # Hybrid bundles (convert-once, re-run generator)
 POCKETTTS_FLOW_MAIN_FP32=1 .venv/bin/python -m pockettts_coreml.convert.convert_flow_lm_main \
-    --save-path Artifacts/en_alba_fp16_fp32_flow_lm_main/flow_lm_main.mlpackage
+    --save-path Artifacts/en_fp16_fp32_flow_lm_main/flow_lm_main.mlpackage
 POCKETTTS_FLOW_FLOW_FP32=1 .venv/bin/python -m pockettts_coreml.convert.convert_flow_lm_flow \
-    --save-path Artifacts/en_alba_fp16_fp32_flow_lm_flow/flow_lm_flow.mlpackage
+    --save-path Artifacts/en_fp16_fp32_flow_lm_flow/flow_lm_flow.mlpackage
 POCKETTTS_FLOW_PREFILL_FP32=1 .venv/bin/python -m pockettts_coreml.convert.convert_flow_lm_prefill \
-    --save-path Artifacts/en_alba_fp16_fp32_flow_lm_prefill/flow_lm_prefill.mlpackage
+    --save-path Artifacts/en_fp16_fp32_flow_lm_prefill/flow_lm_prefill.mlpackage
 POCKETTTS_MIMI_DECODER_FP16=1 .venv/bin/python -m pockettts_coreml.convert.convert_mimi_decoder \
-    --save-path Artifacts/en_alba_fp16_fp16_mimi_decoder/mimi_decoder.mlpackage
+    --save-path Artifacts/en_fp16_fp16_mimi_decoder/mimi_decoder.mlpackage
 
 # Run each hybrid
 for cfg in fp32_flow_lm_main fp32_flow_lm_flow fp32_flow_lm_prefill fp16_mimi_decoder; do
     .venv/bin/python /tmp/drift_work/run_coreml_gen.py \
-        Artifacts/en_alba_fp16_$cfg /tmp/drift_$cfg.wav
+        Artifacts/en_fp16_$cfg /tmp/drift_$cfg.wav
 done
 
 # Metrics
 .venv/bin/python /tmp/drift_work/drift_vs_reference.py /tmp/drift_*.wav
 ```
 
-The hybrid `Artifacts/en_alba_fp16_*` dirs are **symlinks** to the
-shipped `en_alba_fp16/` for every submodel except the swapped one, so
+The hybrid `Artifacts/en_fp16_*` dirs are **symlinks** to the
+shipped `en_fp16/` for every submodel except the swapped one, so
 each hybrid carries only the delta on disk. They are gitignored via
 the top-level `Artifacts/` rule.
 

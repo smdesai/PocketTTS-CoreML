@@ -18,7 +18,7 @@ import pytest
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARTIFACTS_DIR = REPO_ROOT / "Artifacts" / "en_alba_fp16"
+ARTIFACTS_DIR = REPO_ROOT / "Artifacts" / "en_fp16"
 VOICE = (
     REPO_ROOT / "pockettts_coreml" / "oracle" / "fixtures"
     / "english_alba_seed42" / "alba.safetensors"

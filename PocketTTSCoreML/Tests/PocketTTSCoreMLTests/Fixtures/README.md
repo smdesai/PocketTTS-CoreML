@@ -6,8 +6,8 @@ repository root:
 - `../../pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model`
 - `../../pockettts_coreml/oracle/fixtures/english_alba_seed42/alba.safetensors`
 - `../../pockettts_coreml/oracle/fixtures/english_alba_seed42/golden/output.wav`
-- `../../Artifacts/en_alba_fp16/*.mlpackage`
-- `../../Artifacts/en_alba_fp16/mimi_decoder.state_layout.json`
+- `../../Artifacts/en_fp16/*.mlpackage`
+- `../../Artifacts/en_fp16/mimi_decoder.state_layout.json`
 
 Tests locate them via the `POCKETTTS_REPO_ROOT` environment variable,
 falling back to the compiled `#file` path. This avoids embedding gated

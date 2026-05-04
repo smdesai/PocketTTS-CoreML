@@ -34,7 +34,7 @@ enum FixturePaths {
     static var goldenWavURL: URL { fixturesDir.appendingPathComponent("golden/output.wav") }
 
     static var artifactsDir: URL {
-        repoRoot.appendingPathComponent("Artifacts").appendingPathComponent("en_alba_fp16")
+        repoRoot.appendingPathComponent("Artifacts").appendingPathComponent("en_fp16")
     }
 
     static var tokenizerAvailable: Bool {

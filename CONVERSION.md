@@ -37,7 +37,7 @@ bound is ~1/4 of the 6L RTFx.
 | `mimi_decoder`      |    39 MB    | 32-d latent → 24 kHz PCM frame (SEANet+MHA)    |    0% (CPU)   |
 | **Total per language** | **~356 MB** |                                              |               |
 
-Numbers from `Artifacts/en_alba_fp16_mlmodelc/` measured via
+Numbers from `Artifacts/en_fp16_mlmodelc/` measured via
 `MLComputePlan` on iPhone 17 Pro (A19 Pro). Spanish is architecturally
 identical (6L/1024d) and matches these numbers.
 
@@ -91,24 +91,24 @@ cd /Users/sdesai/Tools/AI/pocketTTS-CoreML
 .venv/bin/python -m pockettts_coreml.convert \
     --all \
     --language english \
-    --out Artifacts/en_alba_fp16
+    --out Artifacts/en_fp16
 
 # 2. Pre-compile to .mlmodelc for iOS ship (halves artifact size,
 #    eliminates per-launch compile)
-mkdir -p Artifacts/en_alba_fp16_mlmodelc
+mkdir -p Artifacts/en_fp16_mlmodelc
 for m in text_conditioner flow_lm_main flow_lm_prefill flow_lm_flow \
          mimi_encoder mimi_decoder; do
     xcrun coremlcompiler compile \
-        Artifacts/en_alba_fp16/${m}.mlpackage \
-        Artifacts/en_alba_fp16_mlmodelc/
+        Artifacts/en_fp16/${m}.mlpackage \
+        Artifacts/en_fp16_mlmodelc/
 done
 
 # 3. Copy sidecars (the bos_emb + state layout are produced by the
 #    conversion scripts and must travel with the .mlmodelc bundles)
-cp Artifacts/en_alba_fp16/mimi_decoder.state_layout.json \
-   Artifacts/en_alba_fp16/flow_lm_bos_emb.safetensors \
-   Artifacts/en_alba_fp16/speaker_proj.safetensors \
-   Artifacts/en_alba_fp16_mlmodelc/
+cp Artifacts/en_fp16/mimi_decoder.state_layout.json \
+   Artifacts/en_fp16/flow_lm_bos_emb.safetensors \
+   Artifacts/en_fp16/speaker_proj.safetensors \
+   Artifacts/en_fp16_mlmodelc/
 ```
 
 ### 2.3 Convert another language (e.g. Spanish)
@@ -668,8 +668,8 @@ real regression.
 ```
 pocketTTS-CoreML/
 ├── Artifacts/                              (gitignored: regenerate locally)
-│   ├── en_alba_fp16/                       6 .mlpackage + 2 sidecars (dev-time)
-│   ├── en_alba_fp16_mlmodelc/              6 .mlmodelc + 2 sidecars (ship)
+│   ├── en_fp16/                       6 .mlpackage + 2 sidecars (dev-time)
+│   ├── en_fp16_mlmodelc/              6 .mlmodelc + 2 sidecars (ship)
 │   └── es_fp16/, es_fp16_mlmodelc/         Spanish counterparts
 ├── voices/                                 (gitignored) 21 English voice safetensors
 ├── voices_spanish/                         (gitignored) Spanish voices + tokenizer

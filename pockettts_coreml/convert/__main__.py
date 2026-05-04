@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--out", type=Path, default=None,
         help="Output directory for .mlpackage artifacts. Defaults to "
-             "`Artifacts/en_alba_fp16/` (for backwards compat with the "
+             "`Artifacts/en_fp16/` (for backwards compat with the "
              "English bundle).",
     )
     p.add_argument(

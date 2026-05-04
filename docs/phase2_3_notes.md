@@ -21,7 +21,7 @@ instructions.
 | `mimi_encoder`     | GREEN  | 20 MB | SEANet encoder + patched 2-layer MHA + 16x downsample. Static `T_audio=24000*4=96000` (4 s); see §Mimi closeout. |
 | `mimi_decoder`     | GREEN  | 39 MB | Patched 2-layer MHA (context=250, KV s_cap=1024) + SEANet decoder with 10 streaming-state slots packed into a single fp16 blob; see `docs/mimi_state_layout.md`. Converted at FP32 compute precision (CPU-fallback expected per plan). |
 
-Total fp16 artifact size (5 GREEN): **~230 MB** in `Artifacts/en_alba_fp16/`.
+Total fp16 artifact size (5 GREEN): **~230 MB** in `Artifacts/en_fp16/`.
 Plan's estimate for the FlowLM slice alone was ~100 MB; the delta is a
 fatter `flow_lm_main` than anticipated (12×1024 vs 6×1024 in the plan's
 rough math; the transformer FFN at hidden_scale=4 pushes per-layer

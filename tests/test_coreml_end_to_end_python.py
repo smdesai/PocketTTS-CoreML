@@ -30,7 +30,7 @@ Run with:
     POCKETTTS_ORACLE_READY=1 POCKETTTS_COREML_ARTIFACTS=...\
         .venv/bin/python -m pytest tests/test_coreml_end_to_end_python.py -v
 
-Defaults: if `Artifacts/en_alba_fp16/*.mlpackage` is missing, skip.
+Defaults: if `Artifacts/en_fp16/*.mlpackage` is missing, skip.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ import pytest
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARTIFACTS_DIR = REPO_ROOT / "Artifacts" / "en_alba_fp16"
+ARTIFACTS_DIR = REPO_ROOT / "Artifacts" / "en_fp16"
 GOLDEN_DIR = REPO_ROOT / "pockettts_coreml" / "oracle" / "fixtures" / "english_alba_seed42" / "golden"
 
 # Reference is a git subtree; same pattern as the oracle.

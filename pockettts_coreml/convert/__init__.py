@@ -19,7 +19,7 @@ Common recipe (plan Phase 3):
            compute_precision=ct.precision.FLOAT16,
            compute_units=ct.ComputeUnit.CPU_AND_NE,
        ).
-    6. Save to Artifacts/en_alba_fp16/<name>.mlpackage.
+    6. Save to Artifacts/en_fp16/<name>.mlpackage.
     7. Spot-check: predict on a known input; compare to eager-fp32
        output with atol=5e-3, rtol=5e-3 (fp16 roundoff tolerance).
 
@@ -30,6 +30,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-ARTIFACTS_DIR = Path(__file__).resolve().parent.parent.parent / "Artifacts" / "en_alba_fp16"
+ARTIFACTS_DIR = Path(__file__).resolve().parent.parent.parent / "Artifacts" / "en_fp16"
 
 __all__ = ["ARTIFACTS_DIR"]

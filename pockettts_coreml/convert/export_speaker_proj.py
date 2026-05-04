@@ -25,7 +25,7 @@ Output: `<out_dir>/speaker_proj.safetensors` — always contains
 
 Usage:
     python -m pockettts_coreml.convert.export_speaker_proj \\
-        --language english --out Artifacts/en_alba_fp16
+        --language english --out Artifacts/en_fp16
 """
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--out", type=Path, default=None,
         help="Output directory for `speaker_proj.safetensors`. Defaults to "
-             "Artifacts/en_alba_fp16/ (the convert-step default).",
+             "Artifacts/en_fp16/ (the convert-step default).",
     )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
