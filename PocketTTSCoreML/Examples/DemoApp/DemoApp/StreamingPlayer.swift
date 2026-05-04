@@ -41,11 +41,17 @@ public final class StreamingPlayer: ObservableObject {
 
     // MARK: - Audio session
 
-    /// Configure the shared AVAudioSession for spoken-audio playback.
+    /// Configure the shared AVAudioSession for playback.
     /// Safe to call multiple times.
+    ///
+    /// Uses `.default` mode + `.mixWithOthers` rather than `.spokenAudio`:
+    /// `.spokenAudio` interacts poorly with iOS ReplayKit screen recording —
+    /// the recorder captures no audio and generation itself slows down under
+    /// thermal pressure. `.default` + `.mixWithOthers` captures correctly in
+    /// screen recordings and has no downside for our TTS playback.
     public func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try session.setActive(true, options: [])
     }
 
