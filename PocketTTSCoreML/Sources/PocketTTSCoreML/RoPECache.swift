@@ -49,14 +49,14 @@ public struct RoPECache: Sendable {
             cosOut.count == halfDim && sinOut.count == halfDim,
             "RoPE step buffer size must match halfDim (\(halfDim)); got \(cosOut.count)")
         let base = offset * halfDim
-        cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
+        _ = cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.cos.withUnsafeBufferPointer { src in
                 memcpy(
                     dst.baseAddress!, src.baseAddress! + base,
                     halfDim * MemoryLayout<Float>.stride)
             }
         }
-        sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
+        _ = sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.sin.withUnsafeBufferPointer { src in
                 memcpy(
                     dst.baseAddress!, src.baseAddress! + base,
@@ -74,14 +74,14 @@ public struct RoPECache: Sendable {
         precondition(cosOut.count == length * halfDim)
         precondition(sinOut.count == length * halfDim)
         let src = offset * halfDim
-        cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
+        _ = cosOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.cos.withUnsafeBufferPointer { s in
                 memcpy(
                     dst.baseAddress!, s.baseAddress! + src,
                     length * halfDim * MemoryLayout<Float>.stride)
             }
         }
-        sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
+        _ = sinOut.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
             self.sin.withUnsafeBufferPointer { s in
                 memcpy(
                     dst.baseAddress!, s.baseAddress! + src,

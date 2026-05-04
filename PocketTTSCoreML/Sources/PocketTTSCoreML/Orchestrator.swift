@@ -116,14 +116,16 @@ public final class Orchestrator: @unchecked Sendable {
         maxGenLen: Int,
         continuation: AsyncThrowingStream<Data, Error>.Continuation
     ) throws {
+        try validate(options: options, maxGenLen: maxGenLen)
+
         // Resolve to the AR-loop inputs: (kvCache, initialOffset, bosEmb, noiseSeq).
-        let kvBox: MLMultiArrayBox
+        let kvCache: MLMultiArray
         let initialOffset: Int
         let bosEmb: [Float]
         let noiseSeq: [[Float]]?
         switch voice.kind {
         case .prefilled(let b, let off, let bos, _, let ns):
-            kvBox = b
+            kvCache = try makeFlowKVScratch(from: b.array)
             initialOffset = off
             bosEmb = bos
             noiseSeq = ns
@@ -135,19 +137,20 @@ public final class Orchestrator: @unchecked Sendable {
             guard let resolvedBos = emb else {
                 throw OrchestratorError.missingBosEmb
             }
+            let workingKV = try makeFlowKVScratch(from: b.array)
             let newOffset = try runTextPrefill(
-                voiceKV: b.array,
+                voiceKV: workingKV,
                 voiceOffset: voiceOff,
                 textTokens: textTokens
             )
-            kvBox = b
+            kvCache = workingKV
             initialOffset = newOffset
             bosEmb = resolvedBos
             noiseSeq = nil  // no golden RNG trajectory for dynamic prompts
         }
 
         // Preallocate persistent buffers. flow_lm_* are fp16 end-to-end.
-        let kvCache = kvBox.array  // rank-5 [12, 1, 256, 16, 64] fp16
+        // rank-5 [2*L, 1, 256, 16, 64] fp16, private to this stream.
 
         let sequence = try MLMultiArray(
             shape: [1, 1, NSNumber(value: PocketTTSArch.latentDim)], dataType: .float16
@@ -177,12 +180,35 @@ public final class Orchestrator: @unchecked Sendable {
         )
         writeFp32ToFp16MA([0], dst: flowSIn, count: 1)
         writeFp32ToFp16MA([1], dst: flowTIn, count: 1)
+        let offsetMask = try MLMultiArray(
+            shape: [1, NSNumber(value: PocketTTSArch.flowSCap)], dataType: .float16
+        )
+        let attnMask = try MLMultiArray(
+            shape: [1, 1, 1, NSNumber(value: PocketTTSArch.flowSCap)], dataType: .float16
+        )
 
         // Mimi state. `mimi_decoder.mlpackage` is fp32 end-to-end
         // (FP32 compute precision was chosen at conversion time to cover
         // the CPU-fallback ConvTranspose1d ops — see docs/phase2_3_notes.md).
         let mimiState = try MimiStateBuffer(layout: models.mimiLayout)
         let T = PocketTTSArch.mimiTStep
+        let mimiLatent = try MLMultiArray(
+            shape: [1, NSNumber(value: PocketTTSArch.latentDim), 1], dataType: .float32
+        )
+        let scatter = try MLMultiArray(
+            shape: [
+                1, NSNumber(value: PocketTTSArch.mimiSCap),
+                NSNumber(value: T),
+            ],
+            dataType: .float32
+        )
+        let mimiAttn = try MLMultiArray(
+            shape: [
+                1, 1, NSNumber(value: T),
+                NSNumber(value: PocketTTSArch.mimiSCap),
+            ],
+            dataType: .float32
+        )
         let mimiRopeCos = try MLMultiArray(
             shape: [1, NSNumber(value: T), 1, NSNumber(value: PocketTTSArch.mimiHalfDim)],
             dataType: .float32
@@ -201,14 +227,12 @@ public final class Orchestrator: @unchecked Sendable {
             std: sqrt(options.temperature))
         if let seq = noiseSeq { noiseSrc.setPrecomputed(seq) }
 
-        // Intermediate buffers swapped into dictionaries per-step to avoid
-        // per-step MLMultiArray allocation where possible. We still create
-        // fresh attn/offset masks per step because those are position-dependent.
-        let flowMainFeatures = try MLDictionaryFeatureProvider(dictionary: [:])
-        _ = flowMainFeatures
-
         var stepLatent = [Float](repeating: 0, count: PocketTTSArch.latentDim)
+        var stepNoise = [Float](repeating: 0, count: PocketTTSArch.latentDim)
+        var pcmFloats = [Float](repeating: 0, count: PocketTTSArch.frameSize)
+        var pcmInt16s = [Int16](repeating: 0, count: PocketTTSArch.frameSize)
         var kvExhausted = false
+        var mimiExhausted = false
 
         for gen in 0 ..< maxGenLen {
             // KV cache is S_cap=256 positions. When we've filled it, stop
@@ -221,13 +245,17 @@ public final class Orchestrator: @unchecked Sendable {
                 kvExhausted = true
                 break
             }
+            if mimiOffset + T > PocketTTSArch.mimiSCap {
+                mimiExhausted = true
+                break
+            }
             try autoreleasepool {
                 // ---- FLOW LM MAIN STEP (fp16 I/O) ----
-                let offsetMask = try Masks.oneHotOffsetMaskFp16(
-                    offset: currentOffset, sCapacity: PocketTTSArch.flowSCap
+                try Masks.fillOneHotOffsetMaskFp16(
+                    offsetMask, offset: currentOffset, sCapacity: PocketTTSArch.flowSCap
                 )
-                let attnMask = try Masks.additiveAttentionMaskStepFp16(
-                    offset: currentOffset, sCapacity: PocketTTSArch.flowSCap
+                try Masks.fillAdditiveAttentionMaskStepFp16(
+                    attnMask, offset: currentOffset, sCapacity: PocketTTSArch.flowSCap
                 )
                 // Slice fp32 table then downcast to fp16.
                 flowRope.fillStep(
@@ -278,8 +306,13 @@ public final class Orchestrator: @unchecked Sendable {
                 }
 
                 // ---- FLOW LM FLOW (fp16 I/O) ----
-                let noise = noiseSrc.sample(count: PocketTTSArch.latentDim)
-                writeFp32ToFp16MA(noise, dst: flowNoiseIn, count: PocketTTSArch.latentDim)
+                noiseSrc.fillSample(&stepNoise, count: PocketTTSArch.latentDim)
+                if let clamp = options.noiseClamp {
+                    for i in 0 ..< PocketTTSArch.latentDim {
+                        stepNoise[i] = min(max(stepNoise[i], -clamp), clamp)
+                    }
+                }
+                writeFp32ToFp16MA(stepNoise, dst: flowNoiseIn, count: PocketTTSArch.latentDim)
                 let flowFlowInputs: [String: MLFeatureValue] = [
                     "c": MLFeatureValue(multiArray: ctxMA),
                     "s": MLFeatureValue(multiArray: flowSIn),
@@ -294,16 +327,15 @@ public final class Orchestrator: @unchecked Sendable {
                 readFp16MAToFp32(nextLatentMA, dst: &stepLatent, count: PocketTTSArch.latentDim)
 
                 // ---- MIMI DECODER STEP (fp32 I/O — per artifact conversion) ----
-                let mimiLatent = try MLMultiArray(
-                    shape: [1, NSNumber(value: PocketTTSArch.latentDim), 1], dataType: .float32
-                )
                 mimiLatent.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
                     for i in 0 ..< PocketTTSArch.latentDim { buf[i] = stepLatent[i] }
                 }
-                let scatter = try Masks.scatterPrefillMask(
-                    startOffset: mimiOffset, prefillLen: T, sCapacity: PocketTTSArch.mimiSCap
+                try Masks.fillScatterPrefillMask(
+                    scatter, startOffset: mimiOffset, prefillLen: T,
+                    sCapacity: PocketTTSArch.mimiSCap
                 )
-                let mimiAttn = try Masks.additiveAttentionMaskPrefill(
+                try Masks.fillAdditiveAttentionMaskPrefill(
+                    mimiAttn,
                     startOffset: mimiOffset, prefillLen: T,
                     sCapacity: PocketTTSArch.mimiSCap,
                     context: PocketTTSArch.mimiTxContext
@@ -332,7 +364,8 @@ public final class Orchestrator: @unchecked Sendable {
                 mimiOffset += T
 
                 // audioMA is fp32[1,1,1920]. Convert to PCM16.
-                let pcm = AudioStream.frameToPCM16(audioMA)
+                let pcm = AudioStream.frameToPCM16(
+                    audioMA, floats: &pcmFloats, int16s: &pcmInt16s)
                 continuation.yield(pcm)
 
                 // Prepare next sequence input = current next_latent (fp16).
@@ -351,6 +384,13 @@ public final class Orchestrator: @unchecked Sendable {
             FileHandle.standardError.write(
                 Data(
                     "PocketTTS: KV cache S_cap=\(PocketTTSArch.flowSCap) exhausted at offset=\(currentOffset); stopped early. Split text at sentence boundaries for longer output.\n"
+                        .utf8
+                ))
+        }
+        if mimiExhausted {
+            FileHandle.standardError.write(
+                Data(
+                    "PocketTTS: Mimi state S_cap=\(PocketTTSArch.mimiSCap) exhausted at offset=\(mimiOffset); stopped early.\n"
                         .utf8
                 ))
         }
@@ -637,7 +677,7 @@ public final class Orchestrator: @unchecked Sendable {
     @inline(__always)
     private func copyMLMultiArray(src: MLMultiArray, dst: MLMultiArray) {
         precondition(src.count == dst.count)
-        src.withUnsafeBufferPointer(ofType: Float.self) { sp in
+        _ = src.withUnsafeBufferPointer(ofType: Float.self) { sp in
             dst.withUnsafeMutableBufferPointer(ofType: Float.self) { dp, _ in
                 memcpy(dp.baseAddress!, sp.baseAddress!, src.count * MemoryLayout<Float>.stride)
             }
@@ -648,6 +688,42 @@ public final class Orchestrator: @unchecked Sendable {
     private func copyFp16MLMultiArray(src: MLMultiArray, dst: MLMultiArray) {
         precondition(src.count == dst.count)
         memcpy(dst.dataPointer, src.dataPointer, src.count * MemoryLayout<UInt16>.stride)
+    }
+
+    @inline(__always)
+    private func makeFlowKVScratch(from source: MLMultiArray) throws -> MLMultiArray {
+        guard source.dataType == .float16 else {
+            throw OrchestratorError.unsupportedKVDataType(source.dataType)
+        }
+        let expectedCount =
+            2 * PocketTTSArch.flowLayers * PocketTTSArch.flowSCap
+            * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        guard source.count == expectedCount else {
+            throw OrchestratorError.invalidKVShape(source.shape.map { $0.intValue })
+        }
+        let scratch = try MLMultiArray(shape: source.shape, dataType: .float16)
+        memcpy(scratch.dataPointer, source.dataPointer, source.count * MemoryLayout<UInt16>.stride)
+        return scratch
+    }
+
+    private func validate(options: PocketTTS.GenerateOptions, maxGenLen: Int) throws {
+        guard maxGenLen >= 0 else { throw OrchestratorError.invalidOption("maxGenLen", maxGenLen) }
+        guard options.framesAfterEos >= 0 else {
+            throw OrchestratorError.invalidOption("framesAfterEos", options.framesAfterEos)
+        }
+        guard options.temperature.isFinite && options.temperature >= 0 else {
+            throw OrchestratorError.invalidFloatOption("temperature", options.temperature)
+        }
+        guard options.eosThreshold.isFinite else {
+            throw OrchestratorError.invalidFloatOption("eosThreshold", options.eosThreshold)
+        }
+        if let clamp = options.noiseClamp, !(clamp.isFinite && clamp >= 0) {
+            throw OrchestratorError.invalidFloatOption("noiseClamp", clamp)
+        }
+        guard options.lsdDecodeSteps == 1 else {
+            throw OrchestratorError.unsupportedOption(
+                "lsdDecodeSteps", "only 1 is supported by the current CoreML flow_lm_flow path")
+        }
     }
 
     @inline(__always)
@@ -705,6 +781,11 @@ public enum OrchestratorError: Error, CustomStringConvertible {
     case missingBosEmb
     case textTooLong(Int, max: Int)
     case prefillOverflow(voiceOffset: Int, sText: Int, sCap: Int)
+    case invalidKVShape([Int])
+    case unsupportedKVDataType(MLMultiArrayDataType)
+    case invalidOption(String, Int)
+    case invalidFloatOption(String, Float)
+    case unsupportedOption(String, String)
 
     public var description: String {
         switch self {
@@ -725,6 +806,16 @@ public enum OrchestratorError: Error, CustomStringConvertible {
             return "text length \(n) exceeds S_TEXT_PAD=\(m); chunk the text first"
         case .prefillOverflow(let v, let s, let c):
             return "voice_offset(\(v)) + s_text(\(s)) > s_cap(\(c)); voice too long for cache"
+        case .invalidKVShape(let shape):
+            return "flow KV shape \(shape) does not match the loaded model architecture"
+        case .unsupportedKVDataType(let dtype):
+            return "flow KV data type \(dtype) is unsupported; expected fp16"
+        case .invalidOption(let name, let value):
+            return "\(name) must be non-negative; got \(value)"
+        case .invalidFloatOption(let name, let value):
+            return "\(name) must be finite and non-negative where applicable; got \(value)"
+        case .unsupportedOption(let name, let reason):
+            return "\(name) is unsupported: \(reason)"
         }
     }
 }

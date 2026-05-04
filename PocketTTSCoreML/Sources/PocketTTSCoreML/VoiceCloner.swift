@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Accelerate
 import CoreML
 import Foundation
@@ -207,15 +207,9 @@ public final class VoiceCloner: @unchecked Sendable {
         else { throw NSError(domain: "VoiceCloner", code: 6) }
 
         var err: NSError?
-        var done = false
+        let input = OneShotAudioInput(buffer: src)
         conv.convert(to: dst, error: &err) { _, status in
-            if done {
-                status.pointee = .endOfStream
-                return nil
-            }
-            status.pointee = .haveData
-            done = true
-            return src
+            input.next(status: status)
         }
         if let e = err { throw e }
 
@@ -224,5 +218,23 @@ public final class VoiceCloner: @unchecked Sendable {
             throw NSError(domain: "VoiceCloner", code: 7)
         }
         return Array(UnsafeBufferPointer(start: ch, count: n))
+    }
+}
+
+private final class OneShotAudioInput: @unchecked Sendable {
+    private var buffer: AVAudioPCMBuffer?
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func next(status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        guard let buffer else {
+            status.pointee = .endOfStream
+            return nil
+        }
+        self.buffer = nil
+        status.pointee = .haveData
+        return buffer
     }
 }

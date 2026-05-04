@@ -82,47 +82,93 @@ public final class FlowKVCache: @unchecked Sendable {
 
     public func fill(with value: Float) {
         let n = array.count
-        array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-            for i in 0 ..< n { buf[i] = value }
+        switch dtype {
+        case .float16:
+            let bits = Float16Ops.fp32ToFp16Bits(value)
+            let ptr = array.dataPointer.bindMemory(to: UInt16.self, capacity: n)
+            for i in 0 ..< n { ptr[i] = bits }
+        case .float32:
+            array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
+                for i in 0 ..< n { buf[i] = value }
+            }
+        default:
+            preconditionFailure("unsupported FlowKVCache dtype \(dtype)")
         }
     }
 
     /// Copy float array into KV rows [2*layer, 2*layer+2) up to `sLen` slots.
     /// `kForLayer` and `vForLayer` are shape [1, S_actual, H, D] flat arrays.
     public func writeLayer(_ layer: Int, k: [Float], v: [Float], sLen: Int) {
+        precondition(layer >= 0 && layer < PocketTTSArch.flowLayers, "layer out of range")
+        precondition(sLen >= 0 && sLen <= PocketTTSArch.flowSCap, "sLen out of range")
         // row for K = 2*layer, V = 2*layer+1. Target layout per-row: [1, S_cap, H, D]
         // Source layout (per cache): [1, S_actual, H, D]; we copy first sLen slots.
         let rowStride = PocketTTSArch.flowSCap * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
         let perSlot = PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
+        precondition(k.count >= sLen * perSlot, "K cache is smaller than sLen")
+        precondition(v.count >= sLen * perSlot, "V cache is smaller than sLen")
         let srcStride = perSlot  // each slot is H*D floats
         let offsetK = (2 * layer) * rowStride
         let offsetV = (2 * layer + 1) * rowStride
-        array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
+        switch dtype {
+        case .float16:
+            let dst = array.dataPointer.bindMemory(to: UInt16.self, capacity: array.count)
             k.withUnsafeBufferPointer { kp in
                 for s in 0 ..< sLen {
-                    let src = kp.baseAddress! + s * srcStride
-                    let dst = buf.baseAddress! + offsetK + s * perSlot
-                    memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)
+                    Float16Ops.convertFp32ToFp16(
+                        srcPtr: kp.baseAddress!.advanced(by: s * srcStride),
+                        dstPtr: dst.advanced(by: offsetK + s * perSlot),
+                        count: perSlot
+                    )
                 }
             }
             v.withUnsafeBufferPointer { vp in
                 for s in 0 ..< sLen {
-                    let src = vp.baseAddress! + s * srcStride
-                    let dst = buf.baseAddress! + offsetV + s * perSlot
-                    memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)
+                    Float16Ops.convertFp32ToFp16(
+                        srcPtr: vp.baseAddress!.advanced(by: s * srcStride),
+                        dstPtr: dst.advanced(by: offsetV + s * perSlot),
+                        count: perSlot
+                    )
                 }
             }
+        case .float32:
+            array.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
+                k.withUnsafeBufferPointer { kp in
+                    for s in 0 ..< sLen {
+                        let src = kp.baseAddress! + s * srcStride
+                        let dst = buf.baseAddress! + offsetK + s * perSlot
+                        memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)
+                    }
+                }
+                v.withUnsafeBufferPointer { vp in
+                    for s in 0 ..< sLen {
+                        let src = vp.baseAddress! + s * srcStride
+                        let dst = buf.baseAddress! + offsetV + s * perSlot
+                        memcpy(dst, src, perSlot * MemoryLayout<Float>.stride)
+                    }
+                }
+            }
+        default:
+            preconditionFailure("unsupported FlowKVCache dtype \(dtype)")
         }
     }
 
     /// Copy from another MLMultiArray in-place (shapes must match).
     public func copy(from other: MLMultiArray) {
         precondition(other.count == array.count, "shape mismatch")
+        precondition(other.dataType == array.dataType, "dtype mismatch")
         let n = array.count
-        other.withUnsafeBufferPointer(ofType: Float.self) { src in
-            array.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
-                memcpy(dst.baseAddress!, src.baseAddress!, n * MemoryLayout<Float>.stride)
+        switch dtype {
+        case .float16:
+            memcpy(array.dataPointer, other.dataPointer, n * MemoryLayout<UInt16>.stride)
+        case .float32:
+            _ = other.withUnsafeBufferPointer(ofType: Float.self) { src in
+                array.withUnsafeMutableBufferPointer(ofType: Float.self) { dst, _ in
+                    memcpy(dst.baseAddress!, src.baseAddress!, n * MemoryLayout<Float>.stride)
+                }
             }
+        default:
+            preconditionFailure("unsupported FlowKVCache dtype \(dtype)")
         }
     }
 }

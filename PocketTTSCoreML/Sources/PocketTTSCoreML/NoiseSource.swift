@@ -28,12 +28,23 @@ public final class NoiseSource: @unchecked Sendable {
 
     /// Draw `count` samples from N(0, std^2).
     public func sample(count: Int) -> [Float] {
+        var out = [Float](repeating: 0, count: count)
+        fillSample(&out, count: count)
+        return out
+    }
+
+    public func fillSample(_ out: inout [Float], count: Int) {
+        precondition(out.count >= count)
         if let pre = precomputed, pcIndex < pre.count {
             let v = pre[pcIndex]
             pcIndex += 1
-            return v
+            let copyCount = min(count, v.count)
+            for i in 0 ..< copyCount { out[i] = v[i] }
+            if copyCount < count {
+                for i in copyCount ..< count { out[i] = 0 }
+            }
+            return
         }
-        var out = [Float](repeating: 0, count: count)
         var i = 0
         while i < count {
             let u1 = max(nextUniform(), 1e-7)
@@ -44,13 +55,12 @@ public final class NoiseSource: @unchecked Sendable {
             if i + 1 < count { out[i + 1] = r * sin(theta) * std }
             i += 2
         }
-        return out
     }
 
     @inline(__always)
     private func nextUniform() -> Float {
         // xoroshiro128+ minimal impl.
-        var s0 = state0
+        let s0 = state0
         var s1 = state1
         let result = s0 &+ s1
         s1 ^= s0

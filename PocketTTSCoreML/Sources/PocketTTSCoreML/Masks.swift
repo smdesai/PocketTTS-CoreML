@@ -9,31 +9,64 @@ import Foundation
 public enum Masks {
     /// fp16-safe "-infinity" additive mask value.
     public static let attnMaskNeg: Float = -65_504
+    public static let attnMaskNegFp16Bits: UInt16 = 0xFBFF
+    public static let oneFp16Bits: UInt16 = 0x3C00
 
     // MARK: - fp16 variants (for fp16 flow_lm_main / mimi_encoder)
 
     public static func oneHotOffsetMaskFp16(offset: Int, sCapacity: Int) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        try fillOneHotOffsetMaskFp16(arr, offset: offset, sCapacity: sCapacity)
+        return arr
+    }
+
+    public static func fillOneHotOffsetMaskFp16(
+        _ arr: MLMultiArray, offset: Int, sCapacity: Int
+    ) throws {
+        guard offset >= 0 && offset < sCapacity, arr.count == sCapacity,
+            arr.dataType == .float16
+        else {
+            throw NSError(
+                domain: "Masks", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp16 offset mask offset=\(offset), shape=\(arr.shape)"
+                ])
+        }
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity)
         for i in 0 ..< sCapacity { ptr[i] = 0 }
-        ptr[offset] = fp32ToFp16Bits(1.0)
-        return arr
+        ptr[offset] = oneFp16Bits
     }
 
     public static func additiveAttentionMaskStepFp16(
         offset: Int, sCapacity: Int, context: Int? = nil
     ) throws -> MLMultiArray {
-        precondition(offset >= 0 && offset < sCapacity)
         let shape: [NSNumber] = [1, 1, 1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        try fillAdditiveAttentionMaskStepFp16(
+            arr, offset: offset, sCapacity: sCapacity, context: context)
+        return arr
+    }
+
+    public static func fillAdditiveAttentionMaskStepFp16(
+        _ arr: MLMultiArray, offset: Int, sCapacity: Int, context: Int? = nil
+    ) throws {
+        guard offset >= 0 && offset < sCapacity, arr.count == sCapacity,
+            arr.dataType == .float16
+        else {
+            throw NSError(
+                domain: "Masks", code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp16 attention mask offset=\(offset), shape=\(arr.shape)"
+                ])
+        }
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity)
-        let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
-        for i in 0 ..< sCapacity { ptr[i] = negBits }
+        for i in 0 ..< sCapacity { ptr[i] = attnMaskNegFp16Bits }
         let lo = context == nil ? 0 : max(0, offset - context! + 1)
         for i in lo ... offset { ptr[i] = zeroBits }
-        return arr
     }
 
     public static func scatterPrefillMaskFp16(
@@ -41,14 +74,30 @@ public enum Masks {
     ) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity), NSNumber(value: prefillLen)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        try fillScatterPrefillMaskFp16(
+            arr, startOffset: startOffset, prefillLen: prefillLen, sCapacity: sCapacity)
+        return arr
+    }
+
+    public static func fillScatterPrefillMaskFp16(
+        _ arr: MLMultiArray, startOffset: Int, prefillLen: Int, sCapacity: Int
+    ) throws {
+        guard prefillLen >= 0, startOffset >= 0, startOffset + prefillLen <= sCapacity,
+            arr.count == sCapacity * prefillLen, arr.dataType == .float16
+        else {
+            throw NSError(
+                domain: "Masks", code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp16 scatter mask start=\(startOffset), len=\(prefillLen), shape=\(arr.shape)"
+                ])
+        }
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: sCapacity * prefillLen)
         for i in 0 ..< (sCapacity * prefillLen) { ptr[i] = 0 }
-        let oneBits = fp32ToFp16Bits(1.0)
         for j in 0 ..< prefillLen {
             let row = startOffset + j
-            ptr[row * prefillLen + j] = oneBits
+            ptr[row * prefillLen + j] = oneFp16Bits
         }
-        return arr
     }
 
     public static func additiveAttentionMaskPrefillFp16(
@@ -56,11 +105,30 @@ public enum Masks {
     ) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, 1, NSNumber(value: prefillLen), NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
+        try fillAdditiveAttentionMaskPrefillFp16(
+            arr, startOffset: startOffset, prefillLen: prefillLen,
+            sCapacity: sCapacity, context: context)
+        return arr
+    }
+
+    public static func fillAdditiveAttentionMaskPrefillFp16(
+        _ arr: MLMultiArray, startOffset: Int, prefillLen: Int, sCapacity: Int,
+        context: Int? = nil
+    ) throws {
+        guard prefillLen >= 0, startOffset >= 0, startOffset + prefillLen <= sCapacity,
+            arr.count == prefillLen * sCapacity, arr.dataType == .float16
+        else {
+            throw NSError(
+                domain: "Masks", code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp16 prefill attention mask start=\(startOffset), len=\(prefillLen), shape=\(arr.shape)"
+                ])
+        }
         let total = prefillLen * sCapacity
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
-        for i in 0 ..< total { ptr[i] = negBits }
+        for i in 0 ..< total { ptr[i] = attnMaskNegFp16Bits }
         for i in 0 ..< prefillLen {
             let pos = startOffset + i
             let lo = context == nil ? 0 : max(0, pos - context! + 1)
@@ -68,7 +136,6 @@ public enum Masks {
                 ptr[i * sCapacity + k] = zeroBits
             }
         }
-        return arr
     }
 
     // MARK: - Padded prefill helpers (flow_lm_prefill.mlpackage)
@@ -93,10 +160,9 @@ public enum Masks {
         let total = sCapacity * sTextPad
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
         for i in 0 ..< total { ptr[i] = 0 }
-        let oneBits = fp32ToFp16Bits(1.0)
         for j in 0 ..< sText {
             let row = startOffset + j
-            ptr[row * sTextPad + j] = oneBits
+            ptr[row * sTextPad + j] = oneFp16Bits
         }
         return arr
     }
@@ -118,10 +184,9 @@ public enum Masks {
         let arr = try MLMultiArray(shape: shape, dataType: .float16)
         let total = sTextPad * sCapacity
         let ptr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        let negBits = fp32ToFp16Bits(attnMaskNeg)
         let zeroBits: UInt16 = 0
         // Fill all masked.
-        for i in 0 ..< total { ptr[i] = negBits }
+        for i in 0 ..< total { ptr[i] = attnMaskNegFp16Bits }
         // Real rows: causal window.
         for i in 0 ..< sText {
             let pos = startOffset + i
@@ -144,9 +209,15 @@ public enum Masks {
     static func fp32ToFp16Bits(_ f: Float) -> UInt16 {
         var input = f
         var output: UInt16 = 0
-        var srcBuf = vImage_Buffer(data: &input, height: 1, width: 1, rowBytes: 4)
-        var dstBuf = vImage_Buffer(data: &output, height: 1, width: 1, rowBytes: 2)
-        vImageConvert_PlanarFtoPlanar16F(&srcBuf, &dstBuf, 0)
+        withUnsafeMutableBytes(of: &input) { srcRaw in
+            withUnsafeMutableBytes(of: &output) { dstRaw in
+                var srcBuf = vImage_Buffer(
+                    data: srcRaw.baseAddress!, height: 1, width: 1, rowBytes: 4)
+                var dstBuf = vImage_Buffer(
+                    data: dstRaw.baseAddress!, height: 1, width: 1, rowBytes: 2)
+                vImageConvert_PlanarFtoPlanar16F(&srcBuf, &dstBuf, 0)
+            }
+        }
         return output
     }
 
@@ -158,12 +229,29 @@ public enum Masks {
         precondition(offset >= 0 && offset < sCapacity)
         let shape: [NSNumber] = [1, 1, 1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
+        try fillAdditiveAttentionMaskStep(
+            arr, offset: offset, sCapacity: sCapacity, context: context)
+        return arr
+    }
+
+    public static func fillAdditiveAttentionMaskStep(
+        _ arr: MLMultiArray, offset: Int, sCapacity: Int, context: Int? = nil
+    ) throws {
+        guard offset >= 0 && offset < sCapacity, arr.count == sCapacity,
+            arr.dataType == .float32
+        else {
+            throw NSError(
+                domain: "Masks", code: 5,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp32 attention mask offset=\(offset), shape=\(arr.shape)"
+                ])
+        }
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
             for i in 0 ..< sCapacity { buf[i] = attnMaskNeg }
             let lo = context == nil ? 0 : max(0, offset - context! + 1)
             for i in lo ... offset { buf[i] = 0.0 }
         }
-        return arr
     }
 
     /// `build_one_hot_offset_mask`
@@ -171,6 +259,9 @@ public enum Masks {
     public static func oneHotOffsetMask(offset: Int, sCapacity: Int) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
+        guard offset >= 0 && offset < sCapacity else {
+            throw NSError(domain: "Masks", code: 6)
+        }
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
             for i in 0 ..< sCapacity { buf[i] = 0.0 }
             buf[offset] = 1.0
@@ -185,6 +276,24 @@ public enum Masks {
     ) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity), NSNumber(value: prefillLen)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
+        try fillScatterPrefillMask(
+            arr, startOffset: startOffset, prefillLen: prefillLen, sCapacity: sCapacity)
+        return arr
+    }
+
+    public static func fillScatterPrefillMask(
+        _ arr: MLMultiArray, startOffset: Int, prefillLen: Int, sCapacity: Int
+    ) throws {
+        guard prefillLen >= 0, startOffset >= 0, startOffset + prefillLen <= sCapacity,
+            arr.count == sCapacity * prefillLen, arr.dataType == .float32
+        else {
+            throw NSError(
+                domain: "Masks", code: 7,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp32 scatter mask start=\(startOffset), len=\(prefillLen), shape=\(arr.shape)"
+                ])
+        }
         let n = sCapacity * prefillLen
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
             for i in 0 ..< n { buf[i] = 0.0 }
@@ -193,7 +302,6 @@ public enum Masks {
                 buf[row * prefillLen + j] = 1.0
             }
         }
-        return arr
     }
 
     /// `build_additive_attention_mask_prefill`
@@ -203,6 +311,26 @@ public enum Masks {
     ) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, 1, NSNumber(value: prefillLen), NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
+        try fillAdditiveAttentionMaskPrefill(
+            arr, startOffset: startOffset, prefillLen: prefillLen,
+            sCapacity: sCapacity, context: context)
+        return arr
+    }
+
+    public static func fillAdditiveAttentionMaskPrefill(
+        _ arr: MLMultiArray, startOffset: Int, prefillLen: Int, sCapacity: Int,
+        context: Int? = nil
+    ) throws {
+        guard prefillLen >= 0, startOffset >= 0, startOffset + prefillLen <= sCapacity,
+            arr.count == prefillLen * sCapacity, arr.dataType == .float32
+        else {
+            throw NSError(
+                domain: "Masks", code: 8,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "invalid fp32 prefill attention mask start=\(startOffset), len=\(prefillLen), shape=\(arr.shape)"
+                ])
+        }
         let totalQ = prefillLen * sCapacity
         arr.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
             for i in 0 ..< totalQ { buf[i] = attnMaskNeg }
@@ -214,6 +342,5 @@ public enum Masks {
                 }
             }
         }
-        return arr
     }
 }
