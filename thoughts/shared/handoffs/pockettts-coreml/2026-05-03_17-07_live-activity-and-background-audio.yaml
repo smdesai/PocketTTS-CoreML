@@ -1,0 +1,84 @@
+---
+session: pockettts-coreml
+date: 2026-05-03
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: "Verified background audio works and shipped ActivityKit Live Activity for all three runtime modes (streaming, playing, cloning). Full Dynamic Island presentations with a Stop button that cancels via App Intents + Darwin notifications cross-process. All four manual test cases pass on iPhone 17 Pro."
+now: "Natural stopping point. Optional follow-ups -- now-playing / CarPlay / remote-command-center integration (extends today Live Activity work), Stream->Play/Share pipeline polish, chunk-limit retune, .ipa size reduction via voice trimming or palettization, App Store licensing resolution."
+test: "POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/ then cd PocketTTSCoreML && swift test. Live Activity is validated manually on device (stream/play/clone/stop/lock-screen all confirmed working)."
+
+done_this_session:
+  - task: "Background audio verification (manual, on device)"
+    files: []
+  - task: "ActivityKit Live Activity widget extension target"
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/PocketTTSLiveActivity.swift
+      - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/PocketTTSLiveActivityBundle.swift
+      - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/Info.plist
+      - PocketTTSCoreML/Examples/DemoApp/project.yml
+  - task: "Shared module (ActivityAttributes + Stop App Intent)"
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/Shared/PocketTTSActivityAttributes.swift
+      - PocketTTSCoreML/Examples/DemoApp/Shared/StopPocketTTSIntent.swift
+  - task: "TTSViewModel integration (LiveActivityController + StopNotificationListener)"
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/LiveActivityController.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/TTSViewModel.swift
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/Info.plist
+  - task: "Swift 6 strict-concurrency fixes for ActivityKit + AppIntents"
+    files:
+      - PocketTTSCoreML/Examples/DemoApp/DemoApp/LiveActivityController.swift
+      - PocketTTSCoreML/Examples/DemoApp/Shared/StopPocketTTSIntent.swift
+
+blockers: []
+
+questions:
+  - CC-BY-NC-SA licensing for App Store distribution still unresolved; flagged in CONVERSION.md.
+
+decisions:
+  - mode_tint_rename: Private helper function `tint(for:)` collided with SwiftUI's View.tint instance method -- Swift resolved the instance form first and rejected every call site. Renamed to modeTint(for:). General rule -- don't name helper functions anything SwiftUI View protocol already owns (tint, padding, frame, background, etc).
+  - nonisolated_unsafe_for_deinit_access: StopNotificationListener.token is a MainActor-isolated property that deinit needs to read. deinit cannot be MainActor-isolated in Swift 6. Marked nonisolated(unsafe) since token is set exactly once in start() and never mutated again -- single-writer-before-reads makes the unsafe access actually safe. Same pattern used earlier for PocketTTSArch.flowLayers.
+  - unchecked_sendable_boxes_for_activitykit: ActivityKit's Activity<> and ActivityContent<> types aren't Sendable (framework predates Swift 6) but are thread-safe in practice (all state lives in the system's Live Activity daemon). Wrapping them in private `struct UnsafeActivityBox -- @unchecked Sendable { let value }` lets them cross Task boundaries without tripping sendability checks. This is the standard Swift 6 workaround for unaudited Apple framework types.
+  - darwin_notification_for_stop_intent: App Intent's perform() runs in the widget extension process, separate from the app. To deliver a Stop signal to the running app, post a CFNotificationCenter Darwin notification (cross-process) that the app observes at TTSViewModel init. Avoids shared UserDefaults + polling; delivery is immediate.
+
+findings:
+  - background_audio_works_as_wired: AVAudioSession .playback + .spokenAudio category with UIBackgroundModes -- audio in Info.plist handles all the cases that matter -- swipe home during play, lock screen during stream, chunk transitions while backgrounded. No code changes needed; the infrastructure set up earlier was already correct.
+  - app_intent_static_property_rule_swift6: LiveActivityIntent conformances need title and description as `static let`, not `static var`. Swift 6 rejects mutable static state for concurrency reasons. Apple's sample code in the AppIntents docs still shows `static var` in places; ignore that and use `let`.
+  - cfnotificationcenter_addobserver_takes_cfstring_not_cfnotificationname: The API's parameter type is misleadingly named but accepts a raw CFString. Post side (CFNotificationCenterPostNotification) does take a CFNotificationName wrapper. Subtle asymmetry; got it wrong on first pass.
+  - task_at_mainactor_in_doesnt_bypass_sendable: Wrapping `Task { @MainActor in ... }` around a capture doesn't silence Swift 6's Sendable check for the captured values, even though conceptually the Task runs on the same actor as the caller. Must wrap the non-Sendable value in an @unchecked Sendable struct or use Task.detached with the box pattern.
+  - dynamic_island_compact_trailing_short_labels: Best UX in the compact trailing slot is a 3-5 char label (e.g. "1/3", "2.1s", "..."). More gets truncated with an ellipsis. The expanded view is the right place for anything longer.
+
+worked:
+  - Defining ActivityAttributes + ContentState once in a Shared/ folder and including it in both the app and widget extension targets via xcodegen. No module-boundary imports needed; both targets compile the file identically.
+  - Using Darwin notifications for cross-process Stop signaling. Immediate, no polling, no UserDefaults key churn.
+  - "@unchecked Sendable struct boxes for ActivityKit types as a clean Swift 6 workaround rather than disabling strict concurrency globally."
+  - xcodegen's app-extension.widgetkit-extension target type -- auto-wires the extension as an embedded bundle of the main app, no manual Xcode steps needed.
+
+failed:
+  - First attempt wrapped `Task { @MainActor in await activity.update(content) }` hoping @MainActor annotation would count as same-isolation. Swift 6 still flagged `activity` and `content` as non-Sendable sends. Had to add @unchecked Sendable boxes.
+  - Kraken's initial Live Activity code used `CFNotificationName(name)` on both post and observe sides; only the post side is correct. Observe side takes a raw CFString.
+  - One unused `let compiled` variable lingered from the CoreML path; trivial warning, untouched in this cycle.
+
+next:
+  - Optional -- now-playing / remote-control-center integration (MPRemoteCommandCenter + MPNowPlayingInfoCenter). Natural extension of Live Activity; shows TTS in Control Center's Now Playing widget and lets locked-screen play/pause/skip controls work.
+  - Optional -- CarPlay integration if the app ever ships to a real user; requires CarPlay entitlement.
+  - Optional -- Stream -> Play/Share pipeline polish (~20 LOC), chunk retune (25 -> 40-50), background prewarm French (~2-3h).
+  - Productization -- CC-BY-NC-SA licensing resolution for App Store distribution, .ipa size reduction (currently 4.16 GB).
+
+files:
+  created:
+    - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/PocketTTSLiveActivity.swift
+    - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/PocketTTSLiveActivityBundle.swift
+    - PocketTTSCoreML/Examples/DemoApp/PocketTTSLiveActivity/Info.plist
+    - PocketTTSCoreML/Examples/DemoApp/Shared/PocketTTSActivityAttributes.swift
+    - PocketTTSCoreML/Examples/DemoApp/Shared/StopPocketTTSIntent.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/LiveActivityController.swift
+    - thoughts/shared/handoffs/pockettts-coreml/2026-05-03_17-07_live-activity-and-background-audio.yaml
+  modified:
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/TTSViewModel.swift
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp/Info.plist
+    - PocketTTSCoreML/Examples/DemoApp/project.yml
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp.xcodeproj/project.pbxproj
+    - PocketTTSCoreML/Examples/DemoApp/DemoApp.xcodeproj/xcshareddata/xcschemes/DemoApp.xcscheme
