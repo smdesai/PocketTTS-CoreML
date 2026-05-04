@@ -45,7 +45,7 @@ public final class StreamingPlayer: ObservableObject {
     /// Safe to call multiple times.
     public func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio, options: [])
+        try session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
         try session.setActive(true, options: [])
     }
 
