@@ -8,14 +8,12 @@ Usage:
 Status (all GREEN as of 2026-05-01, see individual convert_*.py
 module docstrings for per-submodel details):
     text_conditioner  GREEN  (fp16; 8 MB)
+    flow_lm_prefill   GREEN  (fp16; 126 MB; rank-5 KV I/O)
     flow_lm_main      GREEN  (fp16; 144 MB; rank-5 KV I/O)
     flow_lm_flow      GREEN  (fp16; 19 MB; num_steps=1)
     mimi_encoder      GREEN  (fp16; 20 MB; static T_audio=96000)
     mimi_decoder      GREEN  (fp32; 39 MB; single packed-state blob,
                               s_cap=1024 transformer KV)
-
-The `--include-yellow` flag is retained for historical symmetry but
-has no effect — both Mimi packages are part of the default `--all`.
 """
 from __future__ import annotations
 
@@ -31,18 +29,23 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 LOGGER = logging.getLogger("pockettts_coreml.convert.__main__")
 
-_GREEN = ("text_conditioner", "flow_lm_main", "flow_lm_prefill", "flow_lm_flow")
-_YELLOW = ("mimi_encoder", "mimi_decoder")
+_GREEN = (
+    "text_conditioner",
+    "flow_lm_main",
+    "flow_lm_prefill",
+    "flow_lm_flow",
+    "mimi_encoder",
+    "mimi_decoder",
+)
 # `speaker_proj` is a non-CoreML sidecar (plain safetensors) needed for
 # voice-cloning stage 2 — kept in this driver so `--all` also drops the
 # sidecar alongside the mlpackages.
 _SIDECARS = ("speaker_proj",)
-_ALL = _GREEN + _YELLOW + _SIDECARS
+_ALL = _GREEN + _SIDECARS
 
 
 def _run_one(
     name: str,
-    include_yellow: bool,
     out_dir: Path,
     language: str,
     palettize_bits: int | None = None,
@@ -78,13 +81,9 @@ def _run_one(
             from pockettts_coreml.convert.convert_flow_lm_flow import convert
             convert(out_dir / "flow_lm_flow.mlpackage", language=language)
         elif name == "mimi_encoder":
-            if not include_yellow:
-                return True, "SKIPPED (yellow; pass --include-yellow to attempt)"
             from pockettts_coreml.convert.convert_mimi_encoder import convert
             convert(out_dir / "mimi_encoder.mlpackage", language=language)
         elif name == "mimi_decoder":
-            if not include_yellow:
-                return True, "SKIPPED (yellow; pass --include-yellow to attempt)"
             from pockettts_coreml.convert.convert_mimi_decoder import convert
             convert(out_dir / "mimi_decoder.mlpackage", language=language)
         elif name == "speaker_proj":
@@ -109,10 +108,6 @@ def main(argv: list[str] | None = None) -> int:
         "--only", action="append", default=[],
         choices=list(_ALL),
         help="Run only specific submodel(s). Repeatable.",
-    )
-    p.add_argument(
-        "--include-yellow", action="store_true",
-        help="Include YELLOW-status submodels (will fail with documented errors).",
     )
     p.add_argument(
         "--language", default="english",
@@ -156,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in targets:
         LOGGER.info("=== Converting %s ===", name)
         ok, msg = _run_one(
-            name, include_yellow=args.include_yellow,
+            name,
             out_dir=out_dir, language=args.language,
             palettize_bits=args.palettize_bits,
         )
