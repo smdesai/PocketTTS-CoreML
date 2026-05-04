@@ -52,7 +52,7 @@ optional_artifacts=(
 # Per-language source paths. Extend this map to add more languages.
 #   <id>|<artifacts_src>|<voices_src>|<tokenizer_src>
 LANG_SPECS=(
-    "en|$REPO/Artifacts/en_fp16_mlmodelc|$REPO/voices_english|$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model"
+    "en|$REPO/Artifacts/en_fp16_mlmodelc|$REPO/voices_english|$REPO/voices_english/tokenizer.model"
     "es|$REPO/Artifacts/es_fp16_mlmodelc|$REPO/voices_spanish|$REPO/voices_spanish/tokenizer.model"
     "de|$REPO/Artifacts/de_fp16_mlmodelc|$REPO/voices_german|$REPO/voices_german/tokenizer.model"
     "it|$REPO/Artifacts/it_fp16_mlmodelc|$REPO/voices_italian|$REPO/voices_italian/tokenizer.model"

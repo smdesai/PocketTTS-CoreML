@@ -39,17 +39,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HF_REPO="kyutai/pocket-tts"
 
-# Local dir -> HF subdir under languages/. French is only available as 24L.
-declare -A LANG_SUBDIR=(
-    [english]=english
-    [spanish]=spanish
-    [german]=german
-    [italian]=italian
-    [portuguese]=portuguese
-    [french]=french_24l
-)
-
 ALL_LANGS=(english spanish german italian portuguese french)
+
+# Local dir -> HF subdir under languages/. French is only available as 24L.
+# Keep this as a case statement for compatibility with macOS's Bash 3.2.
+lang_subdir() {
+    case "$1" in
+        english) echo "english" ;;
+        spanish) echo "spanish" ;;
+        german) echo "german" ;;
+        italian) echo "italian" ;;
+        portuguese) echo "portuguese" ;;
+        french) echo "french_24l" ;;
+        *) return 1 ;;
+    esac
+}
 
 if [[ $# -lt 1 ]]; then
     echo "usage: $0 <language> [<language>...]  |  $0 all" >&2
@@ -63,15 +67,18 @@ else
     targets=("$@")
 fi
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-    echo "error: huggingface-cli not on PATH." >&2
-    echo "  pip install huggingface_hub    (or: uv sync)" >&2
+if command -v hf >/dev/null 2>&1; then
+    HF_DOWNLOAD=(hf download)
+elif command -v huggingface-cli >/dev/null 2>&1; then
+    HF_DOWNLOAD=(huggingface-cli download)
+else
+    echo "error: Hugging Face CLI not on PATH." >&2
+    echo "  Install huggingface_hub, then run: hf auth login" >&2
     exit 1
 fi
 
 for lang in "${targets[@]}"; do
-    sub="${LANG_SUBDIR[$lang]:-}"
-    if [[ -z "$sub" ]]; then
+    if ! sub="$(lang_subdir "$lang")"; then
         echo "error: unknown language '$lang' (known: ${ALL_LANGS[*]})" >&2
         exit 2
     fi
@@ -83,7 +90,7 @@ for lang in "${targets[@]}"; do
     # huggingface-cli download lands files under the cache-style layout
     # `<local-dir>/languages/<sub>/{embeddings,*}` even with --include
     # filtering. We move them up and strip the nesting after the fact.
-    huggingface-cli download "$HF_REPO" \
+    "${HF_DOWNLOAD[@]}" "$HF_REPO" \
         --include "languages/$sub/embeddings/*.safetensors" \
         --include "languages/$sub/tokenizer.model" \
         --local-dir "$dest"
