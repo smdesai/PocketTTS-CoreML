@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         pkg = args.artifacts / f"{stem}.mlpackage"
         if not pkg.exists():
             LOGGER.error("Missing artifact: %s", pkg)
-            LOGGER.error("Run: .venv/bin/python -m pockettts_coreml.convert --all --include-yellow --language spanish --out Artifacts/es_fp16")
+            LOGGER.error("Run: .venv/bin/python -m pockettts_coreml.convert --all --language spanish --out Artifacts/es_fp16")
             return 2
 
     LOGGER.info("=== Spanish verify ===")

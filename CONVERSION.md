@@ -76,6 +76,12 @@ huggingface-cli login
 
 # 3. Install Python deps
 uv sync   # or: pip install -e .
+
+# 4. Download per-language voice embeddings + tokenizer from
+#    kyutai/pocket-tts. Populates voices_<lang>/ (gitignored) which
+#    the reference Python generators and prepare_resources.sh read.
+tools/download_voices.sh all
+# or a subset: tools/download_voices.sh english spanish
 ```
 
 Python 3.11, `torch>=2.5,<2.8`, `coremltools==8.1`.
