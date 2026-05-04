@@ -1,4 +1,4 @@
-# pocketTTS-CoreML
+# PocketTTS-CoreML
 
 CoreML port of Kyutai's [PocketTTS](https://github.com/kyutai-labs/pocket-tts)
 (English) targeting Apple Neural Engine + CPU. See
