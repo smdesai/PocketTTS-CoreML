@@ -51,7 +51,7 @@ struct PocketTTSCLI {
                `python -m pockettts_coreml.e2e.export_full_prefill`
                (back-compat path for apps that cache voice+prompt
                pairs; the `--text` arg is ignored in that case).
-          * Defaults: --artifacts=./Artifacts/en_alba_fp16
+          * Defaults: --artifacts=./Artifacts/en_fp16
                       --tokenizer=./tokenizer.model
         """
         print(text)
@@ -93,7 +93,7 @@ struct PocketTTSCLI {
 
     static func runGenerate(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_alba_fp16"))
+        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
         let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let voiceURL = URL(fileURLWithPath: try a.get("--voice"))
         let outURL = URL(fileURLWithPath: try a.get("--out"))
@@ -125,7 +125,7 @@ struct PocketTTSCLI {
 
     static func runBenchmark(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_alba_fp16"))
+        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
         let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let voiceURL = URL(fileURLWithPath: try a.get("--voice"))
         let iterations = Int(a.maybe("--iterations") ?? "3") ?? 3
@@ -167,7 +167,7 @@ struct PocketTTSCLI {
 
     static func runClone(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_alba_fp16"))
+        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
         let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let audioURL = URL(fileURLWithPath: try a.get("--audio"))
         let outURL = URL(fileURLWithPath: try a.get("--out"))

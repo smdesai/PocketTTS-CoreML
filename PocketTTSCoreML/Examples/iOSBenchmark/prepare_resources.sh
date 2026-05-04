@@ -15,7 +15,7 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 RES="$HERE/iOSBenchmark/Resources"
 
 # Sanity-check source paths.
-ARTIFACTS="$REPO/Artifacts/en_alba_fp16"
+ARTIFACTS="$REPO/Artifacts/en_fp16"
 VOICE="$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/alba.safetensors"
 TOKENIZER="$REPO/pockettts_coreml/oracle/fixtures/english_alba_seed42/tokenizer.model"
 

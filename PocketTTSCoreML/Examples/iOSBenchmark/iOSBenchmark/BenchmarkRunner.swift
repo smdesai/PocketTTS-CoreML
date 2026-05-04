@@ -97,14 +97,14 @@ public final class BenchmarkRunner: ObservableObject {
         guard let artifactsDir = bundle.url(
             forResource: "Artifacts", withExtension: nil
         ) ?? bundle.url(
-            forResource: "en_alba_fp16", withExtension: nil
+            forResource: "en_fp16", withExtension: nil
         ) else {
             throw BenchmarkError.missingResource(
                 "Artifacts/ directory not bundled with app"
             )
         }
-        // Prefer en_alba_fp16 sub-directory if the outer folder was copied.
-        let inner = artifactsDir.appendingPathComponent("en_alba_fp16", isDirectory: true)
+        // Prefer en_fp16 sub-directory if the outer folder was copied.
+        let inner = artifactsDir.appendingPathComponent("en_fp16", isDirectory: true)
         if FileManager.default.fileExists(atPath: inner.path) {
             self.artifactsDir = inner
         } else {

@@ -1,7 +1,7 @@
 # PocketTTSCoreML — Swift runtime for the English PocketTTS CoreML port
 
 This Swift Package loads the six `.mlpackage` bundles in
-`Artifacts/en_alba_fp16/` and produces 24 kHz mono int16 PCM, streaming
+`Artifacts/en_fp16/` and produces 24 kHz mono int16 PCM, streaming
 from Apple Neural Engine / GPU / CPU via CoreML.
 
 **Status:** Phase 4B (macOS 14+) — text prefill runs in Swift; no
@@ -13,7 +13,7 @@ Python helper required for generation. iOS 18+ is declared in
 - macOS 14 or newer.
 - Xcode 16 / Swift toolchain ≥ 6.0 (the package pins
   `swift-tools-version:6.0` so it can declare `.iOS(.v18)`).
-- The 6 `.mlpackage` bundles in `Artifacts/en_alba_fp16/` plus the
+- The 6 `.mlpackage` bundles in `Artifacts/en_fp16/` plus the
   sidecar `mimi_decoder.state_layout.json` and
   `flow_lm_bos_emb.safetensors`. Regenerate via
   `python -m pockettts_coreml.convert --all`.
@@ -39,7 +39,7 @@ swift test                 # runs all tests; uses fixtures under ../pockettts_co
 import PocketTTSCoreML
 
 let tts = try await PocketTTS(
-    artifactsBundle: URL(fileURLWithPath: "Artifacts/en_alba_fp16"),
+    artifactsBundle: URL(fileURLWithPath: "Artifacts/en_fp16"),
     tokenizerPath:   URL(fileURLWithPath: "tokenizer.model"),
     computeUnits:    .cpuAndNeuralEngine
 )
@@ -88,18 +88,18 @@ swift build -c release
 ./.build/release/pocket-tts-cli --help
 ./.build/release/pocket-tts-cli tokenize --tokenizer tokenizer.model --text "Hello world"
 ./.build/release/pocket-tts-cli generate  \
-    --artifacts Artifacts/en_alba_fp16    \
+    --artifacts Artifacts/en_fp16    \
     --tokenizer tokenizer.model           \
     --voice    alba.safetensors           \
     --text "Pocket TTS is a lightweight text-to-speech model." \
     --out  out.wav
 ./.build/release/pocket-tts-cli benchmark \
-    --artifacts Artifacts/en_alba_fp16    \
+    --artifacts Artifacts/en_fp16    \
     --tokenizer tokenizer.model           \
     --voice    alba.safetensors           \
     --iterations 5
 ./.build/release/pocket-tts-cli clone     \
-    --artifacts Artifacts/en_alba_fp16    \
+    --artifacts Artifacts/en_fp16    \
     --tokenizer tokenizer.model           \
     --audio input.wav --out cloned.safetensors
 ```
