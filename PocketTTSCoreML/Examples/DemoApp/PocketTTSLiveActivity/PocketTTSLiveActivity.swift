@@ -19,9 +19,9 @@
 //
 
 import ActivityKit
-import WidgetKit
-import SwiftUI
 import AppIntents
+import SwiftUI
+import WidgetKit
 
 @available(iOS 17.0, *)
 struct PocketTTSLiveActivity: Widget {
@@ -63,12 +63,15 @@ struct PocketTTSLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
-                        Text(state.statusLine.isEmpty ? defaultStatus(for: state.mode)
-                                                      : state.statusLine)
-                            .font(.footnote)
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(
+                            state.statusLine.isEmpty
+                                ? defaultStatus(for: state.mode)
+                                : state.statusLine
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         ProgressBar(state: state, tint: modeTint(for: state.mode))
 
@@ -201,8 +204,8 @@ private struct ModeIcon: View {
     private var systemName: String {
         switch mode {
         case .streaming: return "waveform"
-        case .playing:   return "play.circle.fill"
-        case .cloning:   return "person.wave.2.fill"
+        case .playing: return "play.circle.fill"
+        case .cloning: return "person.wave.2.fill"
         }
     }
 }
@@ -251,9 +254,12 @@ private struct TrailingBadge: View {
                 }
             case .playing:
                 if state.totalSeconds > 0 {
-                    Text(String(format: "%.1fs",
-                                max(0, state.totalSeconds - state.elapsedSeconds)))
-                        .font(.caption.monospacedDigit().bold())
+                    Text(
+                        String(
+                            format: "%.1fs",
+                            max(0, state.totalSeconds - state.elapsedSeconds))
+                    )
+                    .font(.caption.monospacedDigit().bold())
                 } else {
                     Text("▶︎").font(.caption.bold())
                 }
@@ -275,8 +281,10 @@ private struct PulsingDot: View {
         Circle()
             .frame(width: 8, height: 8)
             .opacity(pulse ? 0.25 : 1.0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true),
-                       value: pulse)
+            .animation(
+                .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                value: pulse
+            )
             .onAppear { pulse = true }
     }
 }
@@ -287,8 +295,8 @@ private struct PulsingDot: View {
 private func modeTint(for mode: PocketTTSActivityAttributes.ContentState.Mode) -> Color {
     switch mode {
     case .streaming: return .orange
-    case .playing:   return .blue
-    case .cloning:   return .gray
+    case .playing: return .blue
+    case .cloning: return .gray
     }
 }
 
@@ -296,8 +304,8 @@ private func modeTint(for mode: PocketTTSActivityAttributes.ContentState.Mode) -
 private func title(for mode: PocketTTSActivityAttributes.ContentState.Mode) -> String {
     switch mode {
     case .streaming: return "PocketTTS — Streaming"
-    case .playing:   return "PocketTTS — Playing"
-    case .cloning:   return "PocketTTS — Cloning voice"
+    case .playing: return "PocketTTS — Playing"
+    case .cloning: return "PocketTTS — Cloning voice"
     }
 }
 
@@ -305,8 +313,8 @@ private func title(for mode: PocketTTSActivityAttributes.ContentState.Mode) -> S
 private func defaultStatus(for mode: PocketTTSActivityAttributes.ContentState.Mode) -> String {
     switch mode {
     case .streaming: return "Streaming…"
-    case .playing:   return "Playing…"
-    case .cloning:   return "Cloning voice…"
+    case .playing: return "Playing…"
+    case .cloning: return "Cloning voice…"
     }
 }
 

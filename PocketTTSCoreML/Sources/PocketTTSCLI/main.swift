@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 import PocketTTSCoreML
 
 @main
@@ -12,10 +12,10 @@ struct PocketTTSCLI {
         }
         do {
             switch args[1] {
-            case "generate":  try await runGenerate(Array(args.dropFirst(2)))
+            case "generate": try await runGenerate(Array(args.dropFirst(2)))
             case "benchmark": try await runBenchmark(Array(args.dropFirst(2)))
-            case "clone":     try await runClone(Array(args.dropFirst(2)))
-            case "tokenize":  try runTokenize(Array(args.dropFirst(2)))
+            case "clone": try await runClone(Array(args.dropFirst(2)))
+            case "tokenize": try runTokenize(Array(args.dropFirst(2)))
             case "--help", "-h", "help":
                 printUsage()
             default:
@@ -30,30 +30,30 @@ struct PocketTTSCLI {
 
     static func printUsage() {
         let text = """
-        pocket-tts-cli  —  PocketTTS CoreML (Phase 4A) CLI
+            pocket-tts-cli  —  PocketTTS CoreML (Phase 4A) CLI
 
-        Subcommands:
-          generate  --artifacts DIR --tokenizer MODEL --voice VOICE.safetensors
-                    --text TEXT --out OUT.wav
-          benchmark --artifacts DIR --tokenizer MODEL --voice VOICE.safetensors
-                    [--iterations N]
-          clone     --artifacts DIR --audio INPUT.wav --out CLONED.safetensors
-                    [--sample-text TEXT --sample-out WAV]
-          tokenize  --tokenizer MODEL --text TEXT
+            Subcommands:
+              generate  --artifacts DIR --tokenizer MODEL --voice VOICE.safetensors
+                        --text TEXT --out OUT.wav
+              benchmark --artifacts DIR --tokenizer MODEL --voice VOICE.safetensors
+                        [--iterations N]
+              clone     --artifacts DIR --audio INPUT.wav --out CLONED.safetensors
+                        [--sample-text TEXT --sample-out WAV]
+              tokenize  --tokenizer MODEL --text TEXT
 
-        Notes:
-          * `--voice` accepts EITHER:
-             - a raw voice safetensors (e.g. alba.safetensors from the
-               kyutai HF repo). The runtime tokenizes, runs
-               text_conditioner + flow_lm_prefill, and streams audio
-               without any Python helper.
-             - a pre-prefilled safetensors produced by
-               `python -m pockettts_coreml.e2e.export_full_prefill`
-               (back-compat path for apps that cache voice+prompt
-               pairs; the `--text` arg is ignored in that case).
-          * Defaults: --artifacts=./Artifacts/en_fp16
-                      --tokenizer=./tokenizer.model
-        """
+            Notes:
+              * `--voice` accepts EITHER:
+                 - a raw voice safetensors (e.g. alba.safetensors from the
+                   kyutai HF repo). The runtime tokenizes, runs
+                   text_conditioner + flow_lm_prefill, and streams audio
+                   without any Python helper.
+                 - a pre-prefilled safetensors produced by
+                   `python -m pockettts_coreml.e2e.export_full_prefill`
+                   (back-compat path for apps that cache voice+prompt
+                   pairs; the `--text` arg is ignored in that case).
+              * Defaults: --artifacts=./Artifacts/en_fp16
+                          --tokenizer=./tokenizer.model
+            """
         print(text)
     }
 
@@ -75,8 +75,8 @@ struct PocketTTSCLI {
         while i < argv.count {
             let token = argv[i]
             if token.hasPrefix("--") {
-                if i + 1 < argv.count && !argv[i+1].hasPrefix("--") {
-                    a.map[token] = argv[i+1]
+                if i + 1 < argv.count && !argv[i + 1].hasPrefix("--") {
+                    a.map[token] = argv[i + 1]
                     i += 2
                 } else {
                     a.map[token] = "1"
@@ -93,8 +93,10 @@ struct PocketTTSCLI {
 
     static func runGenerate(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
-        let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
+        let artifactsURL = URL(
+            fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
+        let tokenizerURL = URL(
+            fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let voiceURL = URL(fileURLWithPath: try a.get("--voice"))
         let outURL = URL(fileURLWithPath: try a.get("--out"))
         let text = try a.get("--text")
@@ -119,14 +121,18 @@ struct PocketTTSCLI {
         let rtf = elapsed / max(audioSeconds, 1e-9)
 
         try AudioStream.writeWAV(pcm, to: outURL)
-        fputs(String(format: "Wrote %@ | audio=%.3fs wall=%.3fs RTF=%.3f\n",
-                     outURL.lastPathComponent, audioSeconds, elapsed, rtf), stderr)
+        fputs(
+            String(
+                format: "Wrote %@ | audio=%.3fs wall=%.3fs RTF=%.3f\n",
+                outURL.lastPathComponent, audioSeconds, elapsed, rtf), stderr)
     }
 
     static func runBenchmark(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
-        let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
+        let artifactsURL = URL(
+            fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
+        let tokenizerURL = URL(
+            fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let voiceURL = URL(fileURLWithPath: try a.get("--voice"))
         let iterations = Int(a.maybe("--iterations") ?? "3") ?? 3
 
@@ -144,10 +150,11 @@ struct PocketTTSCLI {
         await tts.warmup()
 
         var rtfs: [Double] = []
-        for i in 0..<iterations {
+        for i in 0 ..< iterations {
             var samples = 0
             let t0 = Date()
-            let stream = await tts.generate(text: "Pocket TTS is a lightweight text-to-speech model.", voice: voice)
+            let stream = await tts.generate(
+                text: "Pocket TTS is a lightweight text-to-speech model.", voice: voice)
             for try await frame in stream {
                 samples += frame.count / 2
             }
@@ -156,19 +163,26 @@ struct PocketTTSCLI {
             let rtf = elapsed / max(audioSec, 1e-9)
             rtfs.append(rtf)
             let label = (i == 0) ? "cold" : " warm"
-            print(String(format: "iter %d (%@): audio=%.3fs wall=%.3fs RTF=%.3f",
-                         i, label as CVarArg, audioSec, elapsed, rtf))
+            print(
+                String(
+                    format: "iter %d (%@): audio=%.3fs wall=%.3fs RTF=%.3f",
+                    i, label as CVarArg, audioSec, elapsed, rtf))
         }
         let best = rtfs.min() ?? 0
         let mean = rtfs.reduce(0, +) / Double(max(rtfs.count, 1))
-        print(String(format: "best RTF=%.3f | mean RTF=%.3f | iterations=%d | compute=cpuAndNeuralEngine",
-                     best, mean, iterations))
+        print(
+            String(
+                format:
+                    "best RTF=%.3f | mean RTF=%.3f | iterations=%d | compute=cpuAndNeuralEngine",
+                best, mean, iterations))
     }
 
     static func runClone(_ argv: [String]) async throws {
         let a = parseArgs(argv)
-        let artifactsURL = URL(fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
-        let tokenizerURL = URL(fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
+        let artifactsURL = URL(
+            fileURLWithPath: try a.get("--artifacts", default: "./Artifacts/en_fp16"))
+        let tokenizerURL = URL(
+            fileURLWithPath: try a.get("--tokenizer", default: "./tokenizer.model"))
         let audioURL = URL(fileURLWithPath: try a.get("--audio"))
         let outURL = URL(fileURLWithPath: try a.get("--out"))
         let sampleText = a.maybe("--sample-text")
@@ -179,7 +193,9 @@ struct PocketTTSCLI {
             artifactsBundle: artifactsURL, tokenizerPath: tokenizerURL,
             computeUnits: .cpuAndNeuralEngine
         )
-        fputs("Cloning voice from \(audioURL.lastPathComponent) (stages: mimi_encoder + speaker_proj + flow_lm_prefill)...\n", stderr)
+        fputs(
+            "Cloning voice from \(audioURL.lastPathComponent) (stages: mimi_encoder + speaker_proj + flow_lm_prefill)...\n",
+            stderr)
         let t0 = Date()
         let handle = try await tts.cloneVoice(from: audioURL)
         let cloneWall = Date().timeIntervalSince(t0)
@@ -190,10 +206,13 @@ struct PocketTTSCLI {
         case .prefilled(_, let off, _, _, _): voiceOff = off
         }
         try await tts.saveVoice(handle, to: outURL)
-        let size = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
-        fputs(String(format: "Cloned voice in %.2fs; wrote %@ (%.1f MB; voiceOffset=%d)\n",
-                     cloneWall, outURL.path, Double(size) / (1024 * 1024), voiceOff),
-              stderr)
+        let size =
+            (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
+        fputs(
+            String(
+                format: "Cloned voice in %.2fs; wrote %@ (%.1f MB; voiceOffset=%d)\n",
+                cloneWall, outURL.path, Double(size) / (1024 * 1024), voiceOff),
+            stderr)
 
         // Optional: run a short sample generation with the cloned voice so
         // the caller can listen-check it.
@@ -209,8 +228,10 @@ struct PocketTTSCLI {
             let genWall = Date().timeIntervalSince(tg0)
             try AudioStream.writeWAV(pcm, to: outPath)
             let audioSec = Double(pcm.count / 2) / Double(PocketTTSArch.sampleRate)
-            fputs(String(format: "Wrote %@ (audio=%.2fs wall=%.2fs)\n",
-                         outPath.lastPathComponent, audioSec, genWall), stderr)
+            fputs(
+                String(
+                    format: "Wrote %@ (audio=%.2fs wall=%.2fs)\n",
+                    outPath.lastPathComponent, audioSec, genWall), stderr)
         }
     }
 

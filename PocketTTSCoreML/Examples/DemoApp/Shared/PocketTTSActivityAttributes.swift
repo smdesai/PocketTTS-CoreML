@@ -12,8 +12,8 @@
 //   cloning   — cloneVoice() pipeline; indeterminate (no reliable progress)
 //
 
-import Foundation
 import ActivityKit
+import Foundation
 
 public struct PocketTTSActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {

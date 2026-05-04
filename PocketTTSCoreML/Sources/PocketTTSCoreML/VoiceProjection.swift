@@ -1,6 +1,6 @@
-import Foundation
-import CoreML
 import Accelerate
+import CoreML
+import Foundation
 
 /// Speaker-projection helpers for voice-cloning stage 2.
 ///
@@ -43,21 +43,25 @@ public enum VoiceProjection {
         // Expect latents fp16[1, 32, T_latent]. We transpose to [T_latent, 32]
         // fp32 for the matmul, then cast the product back down to fp16.
         guard latents.shape.count == 3,
-              latents.shape[0].intValue == 1,
-              latents.shape[1].intValue == PocketTTSArch.latentDim
+            latents.shape[0].intValue == 1,
+            latents.shape[1].intValue == PocketTTSArch.latentDim
         else {
-            throw NSError(domain: "VoiceProjection", code: 1, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "latents shape must be [1, 32, T_latent]; got \(latents.shape)"
-            ])
+            throw NSError(
+                domain: "VoiceProjection", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "latents shape must be [1, 32, T_latent]; got \(latents.shape)"
+                ])
         }
         let tLatent = latents.shape[2].intValue
         let ldim = PocketTTSArch.latentDim  // 32
         guard proj.count == dModel * ldim else {
-            throw NSError(domain: "VoiceProjection", code: 2, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "speaker_proj size \(proj.count) != d_model(\(dModel)) * ldim(\(ldim))"
-            ])
+            throw NSError(
+                domain: "VoiceProjection", code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "speaker_proj size \(proj.count) != d_model(\(dModel)) * ldim(\(ldim))"
+                ])
         }
         // 1. Unpack fp16 latents [1, 32, T_latent] → fp32 transposed [T_latent, 32].
         //    IMPORTANT: MLMultiArray backing storage is not guaranteed to be
@@ -69,14 +73,14 @@ public enum VoiceProjection {
         var latentsT = [Float](repeating: 0, count: tLatent * ldim)
         let strides: [Int] = latents.strides.map { $0.intValue }
         precondition(strides.count == 3, "expected rank-3 latents")
-        let capacityBytes = (strides[0] * 1) // large enough upper bound; we bind conservatively
+        let capacityBytes = (strides[0] * 1)  // large enough upper bound; we bind conservatively
         _ = capacityBytes
         // Bind the raw buffer. dataPointer addresses the full strided region;
         // CoreML guarantees the range [0, total_stride_bytes) is valid.
         let totalU16 = strides[0]  // outer stride covers the full allocation
         let srcPtr = latents.dataPointer.bindMemory(to: UInt16.self, capacity: totalU16)
-        for d in 0..<ldim {
-            for t in 0..<tLatent {
+        for d in 0 ..< ldim {
+            for t in 0 ..< tLatent {
                 // Logical index [0, d, t] — respecting strides.
                 let srcIdx = d * strides[1] + t * strides[2]
                 var one: Float = 0
@@ -102,19 +106,19 @@ public enum VoiceProjection {
                 outFp32.withUnsafeMutableBufferPointer { cPtr in
                     cblas_sgemm(
                         CblasRowMajor,
-                        CblasNoTrans,          // A: [T, 32] not transposed
-                        CblasTrans,            // B: [1024, 32] -> transpose to [32, 1024]
-                        Int32(tLatent),        // M
-                        Int32(dModel),         // N
-                        Int32(ldim),           // K
-                        1.0,                   // alpha
-                        aPtr.baseAddress!,     // A
-                        Int32(ldim),           // lda (row stride of A)
-                        pPtr.baseAddress!,     // B (row-major [1024, 32])
-                        Int32(ldim),           // ldb (row stride of B as stored)
-                        0.0,                   // beta
-                        cPtr.baseAddress!,     // C
-                        Int32(dModel)          // ldc
+                        CblasNoTrans,  // A: [T, 32] not transposed
+                        CblasTrans,  // B: [1024, 32] -> transpose to [32, 1024]
+                        Int32(tLatent),  // M
+                        Int32(dModel),  // N
+                        Int32(ldim),  // K
+                        1.0,  // alpha
+                        aPtr.baseAddress!,  // A
+                        Int32(ldim),  // lda (row stride of A)
+                        pPtr.baseAddress!,  // B (row-major [1024, 32])
+                        Int32(ldim),  // ldb (row stride of B as stored)
+                        0.0,  // beta
+                        cPtr.baseAddress!,  // C
+                        Int32(dModel)  // ldc
                     )
                 }
             }
@@ -154,19 +158,23 @@ public enum VoiceProjection {
             return (conditioning, t)
         }
         guard bos.count == dModel else {
-            throw NSError(domain: "VoiceProjection", code: 3, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "bos_before_voice has \(bos.count) elements, expected \(dModel)"
-            ])
+            throw NSError(
+                domain: "VoiceProjection", code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "bos_before_voice has \(bos.count) elements, expected \(dModel)"
+                ])
         }
         guard conditioning.shape.count == 3,
-              conditioning.shape[0].intValue == 1,
-              conditioning.shape[2].intValue == dModel
+            conditioning.shape[0].intValue == 1,
+            conditioning.shape[2].intValue == dModel
         else {
-            throw NSError(domain: "VoiceProjection", code: 4, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "conditioning shape must be [1, T, \(dModel)]; got \(conditioning.shape)"
-            ])
+            throw NSError(
+                domain: "VoiceProjection", code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "conditioning shape must be [1, T, \(dModel)]; got \(conditioning.shape)"
+                ])
         }
         let tIn = conditioning.shape[1].intValue
         let tOut = tIn + 1

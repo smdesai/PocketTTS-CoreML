@@ -11,10 +11,10 @@ enum FixturePaths {
         // #filePath points at .../PocketTTSCoreML/Tests/PocketTTSCoreMLTests/FixturePaths.swift.
         // Walk up to the dir containing both `PocketTTSCoreML` and `Artifacts`.
         var u = URL(fileURLWithPath: #filePath)
-        u.deleteLastPathComponent() // Tests/PocketTTSCoreMLTests
-        u.deleteLastPathComponent() // Tests
-        u.deleteLastPathComponent() // PocketTTSCoreML
-        u.deleteLastPathComponent() // repo root
+        u.deleteLastPathComponent()  // Tests/PocketTTSCoreMLTests
+        u.deleteLastPathComponent()  // Tests
+        u.deleteLastPathComponent()  // PocketTTSCoreML
+        u.deleteLastPathComponent()  // repo root
         return u
     }
 
@@ -27,7 +27,7 @@ enum FixturePaths {
     }
 
     static var tokenizerURL: URL { fixturesDir.appendingPathComponent("tokenizer.model") }
-    static var voiceURL: URL     { fixturesDir.appendingPathComponent("alba.safetensors") }
+    static var voiceURL: URL { fixturesDir.appendingPathComponent("alba.safetensors") }
     static var prefilledVoiceURL: URL {
         fixturesDir.appendingPathComponent("alba_prefilled.safetensors")
     }
@@ -57,7 +57,8 @@ enum FixturePaths {
             "mimi_decoder.state_layout.json",
         ]
         for p in paths {
-            if !FileManager.default.fileExists(atPath: artifactsDir.appendingPathComponent(p).path) {
+            if !FileManager.default.fileExists(atPath: artifactsDir.appendingPathComponent(p).path)
+            {
                 return false
             }
         }

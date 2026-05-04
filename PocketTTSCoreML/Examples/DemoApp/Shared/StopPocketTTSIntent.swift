@@ -19,8 +19,9 @@
 
 import AppIntents
 import Foundation
+
 #if canImport(Darwin)
-import Darwin
+    import Darwin
 #endif
 
 @available(iOS 17.0, *)

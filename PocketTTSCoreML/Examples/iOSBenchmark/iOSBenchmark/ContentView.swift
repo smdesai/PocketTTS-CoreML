@@ -8,8 +8,8 @@
 //  - Share Report button (JSON + markdown)
 //
 
-import SwiftUI
 import CoreML
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -47,9 +47,11 @@ struct ContentView: View {
                 .padding()
             }
             .navigationTitle("PocketTTS RTF")
-            .onReceive(NotificationCenter.default.publisher(
-                for: ProcessInfo.thermalStateDidChangeNotification
-            )) { _ in
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: ProcessInfo.thermalStateDidChangeNotification
+                )
+            ) { _ in
                 thermalState = ProcessInfo.processInfo.thermalState
             }
             .sheet(isPresented: $isSharing) {
@@ -151,7 +153,8 @@ struct ContentView: View {
                         Text("ops \(p.opCount)").font(.caption)
                         Text(String(format: "ANE %.0f%%", p.anePct))
                             .font(.caption.monospaced())
-                            .foregroundStyle(p.anePct >= 80 ? .green : (p.anePct >= 50 ? .orange : .red))
+                            .foregroundStyle(
+                                p.anePct >= 80 ? .green : (p.anePct >= 50 ? .orange : .red))
                         Text(String(format: "GPU %.0f%%", p.gpuPct))
                             .font(.caption.monospaced())
                             .foregroundStyle(.secondary)
@@ -199,9 +202,11 @@ struct ContentView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("About").font(.headline)
-            Text("Runs the PocketTTS CoreML pipeline with three MLComputeUnits configurations. Each row is cold + 3 warm runs; we report the median warm RTF. GREEN gate: warm RTF ≤ 0.5 and flow_lm_main ≥ 80% ANE.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Runs the PocketTTS CoreML pipeline with three MLComputeUnits configurations. Each row is cold + 3 warm runs; we report the median warm RTF. GREEN gate: warm RTF ≤ 0.5 and flow_lm_main ≥ 80% ANE."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.top, 24)
     }

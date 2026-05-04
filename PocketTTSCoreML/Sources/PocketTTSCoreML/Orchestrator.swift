@@ -1,6 +1,6 @@
-import Foundation
-import CoreML
 import Accelerate
+import CoreML
+import Foundation
 
 /// Drives the CoreML AR loop for a single utterance.
 ///
@@ -122,12 +122,12 @@ public final class Orchestrator: @unchecked Sendable {
         let bosEmb: [Float]
         let noiseSeq: [[Float]]?
         switch voice.kind {
-        case let .prefilled(b, off, bos, _, ns):
+        case .prefilled(let b, let off, let bos, _, let ns):
             kvBox = b
             initialOffset = off
             bosEmb = bos
             noiseSeq = ns
-        case let .voiceOnly(b, voiceOff, bos):
+        case .voiceOnly(let b, let voiceOff, let bos):
             guard textTokens.count > 0 else {
                 throw OrchestratorError.emptyTextForVoiceOnly
             }
@@ -196,8 +196,9 @@ public final class Orchestrator: @unchecked Sendable {
         var mimiOffset = 0
         var eosStep: Int? = nil
 
-        let noiseSrc = NoiseSource(seed: options.seed ?? UInt64(bitPattern: Int64(clamping: 42)),
-                                   std: sqrt(options.temperature))
+        let noiseSrc = NoiseSource(
+            seed: options.seed ?? UInt64(bitPattern: Int64(clamping: 42)),
+            std: sqrt(options.temperature))
         if let seq = noiseSeq { noiseSrc.setPrecomputed(seq) }
 
         // Intermediate buffers swapped into dictionaries per-step to avoid
@@ -209,7 +210,7 @@ public final class Orchestrator: @unchecked Sendable {
         var stepLatent = [Float](repeating: 0, count: PocketTTSArch.latentDim)
         var kvExhausted = false
 
-        for gen in 0..<maxGenLen {
+        for gen in 0 ..< maxGenLen {
             // KV cache is S_cap=256 positions. When we've filled it, stop
             // cleanly with whatever audio we have rather than crashing in
             // Masks.additiveAttentionMaskStepFp16's precondition. Callers
@@ -229,27 +230,30 @@ public final class Orchestrator: @unchecked Sendable {
                     offset: currentOffset, sCapacity: PocketTTSArch.flowSCap
                 )
                 // Slice fp32 table then downcast to fp16.
-                flowRope.fillStep(offset: currentOffset,
-                                  cosOut: flowRopeCosFp32, sinOut: flowRopeSinFp32)
+                flowRope.fillStep(
+                    offset: currentOffset,
+                    cosOut: flowRopeCosFp32, sinOut: flowRopeSinFp32)
                 let halfDim = PocketTTSArch.flowHalfDim
                 Float16Ops.convertFp32ToFp16(
-                    srcPtr: flowRopeCosFp32.dataPointer.bindMemory(to: Float.self, capacity: halfDim),
+                    srcPtr: flowRopeCosFp32.dataPointer.bindMemory(
+                        to: Float.self, capacity: halfDim),
                     dstPtr: flowRopeCos.dataPointer.bindMemory(to: UInt16.self, capacity: halfDim),
                     count: halfDim
                 )
                 Float16Ops.convertFp32ToFp16(
-                    srcPtr: flowRopeSinFp32.dataPointer.bindMemory(to: Float.self, capacity: halfDim),
+                    srcPtr: flowRopeSinFp32.dataPointer.bindMemory(
+                        to: Float.self, capacity: halfDim),
                     dstPtr: flowRopeSin.dataPointer.bindMemory(to: UInt16.self, capacity: halfDim),
                     count: halfDim
                 )
 
                 let flowInputs: [String: MLFeatureValue] = [
-                    "sequence":     MLFeatureValue(multiArray: sequence),
-                    "kv_cache_in":  MLFeatureValue(multiArray: kvCache),
-                    "offset_mask":  MLFeatureValue(multiArray: offsetMask),
-                    "attn_mask":    MLFeatureValue(multiArray: attnMask),
-                    "rope_cos":     MLFeatureValue(multiArray: flowRopeCos),
-                    "rope_sin":     MLFeatureValue(multiArray: flowRopeSin),
+                    "sequence": MLFeatureValue(multiArray: sequence),
+                    "kv_cache_in": MLFeatureValue(multiArray: kvCache),
+                    "offset_mask": MLFeatureValue(multiArray: offsetMask),
+                    "attn_mask": MLFeatureValue(multiArray: attnMask),
+                    "rope_cos": MLFeatureValue(multiArray: flowRopeCos),
+                    "rope_sin": MLFeatureValue(multiArray: flowRopeSin),
                 ]
                 let provider = try MLDictionaryFeatureProvider(dictionary: flowInputs)
                 let out = try models.flowMain.prediction(from: provider)
@@ -294,7 +298,7 @@ public final class Orchestrator: @unchecked Sendable {
                     shape: [1, NSNumber(value: PocketTTSArch.latentDim), 1], dataType: .float32
                 )
                 mimiLatent.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
-                    for i in 0..<PocketTTSArch.latentDim { buf[i] = stepLatent[i] }
+                    for i in 0 ..< PocketTTSArch.latentDim { buf[i] = stepLatent[i] }
                 }
                 let scatter = try Masks.scatterPrefillMask(
                     startOffset: mimiOffset, prefillLen: T, sCapacity: PocketTTSArch.mimiSCap
@@ -304,16 +308,17 @@ public final class Orchestrator: @unchecked Sendable {
                     sCapacity: PocketTTSArch.mimiSCap,
                     context: PocketTTSArch.mimiTxContext
                 )
-                mimiRope.fillRange(offset: mimiOffset, length: T,
-                                   cosOut: mimiRopeCos, sinOut: mimiRopeSin)
+                mimiRope.fillRange(
+                    offset: mimiOffset, length: T,
+                    cosOut: mimiRopeCos, sinOut: mimiRopeSin)
 
                 let mimiInputs: [String: MLFeatureValue] = [
-                    "latent":       MLFeatureValue(multiArray: mimiLatent),
-                    "state_in":     MLFeatureValue(multiArray: mimiState.currentIn),
+                    "latent": MLFeatureValue(multiArray: mimiLatent),
+                    "state_in": MLFeatureValue(multiArray: mimiState.currentIn),
                     "scatter_mask": MLFeatureValue(multiArray: scatter),
-                    "attn_mask":    MLFeatureValue(multiArray: mimiAttn),
-                    "rope_cos":     MLFeatureValue(multiArray: mimiRopeCos),
-                    "rope_sin":     MLFeatureValue(multiArray: mimiRopeSin),
+                    "attn_mask": MLFeatureValue(multiArray: mimiAttn),
+                    "rope_cos": MLFeatureValue(multiArray: mimiRopeCos),
+                    "rope_sin": MLFeatureValue(multiArray: mimiRopeSin),
                 ]
                 let mimiProvider = try MLDictionaryFeatureProvider(dictionary: mimiInputs)
                 let mimiOut = try models.mimiDecoder.prediction(from: mimiProvider)
@@ -343,9 +348,11 @@ public final class Orchestrator: @unchecked Sendable {
             // throw here because we already produced audio). Apps that want
             // to generate long text must split at sentence boundaries; see
             // TextChunker.splitIntoBestSentences in the package.
-            FileHandle.standardError.write(Data(
-                "PocketTTS: KV cache S_cap=\(PocketTTSArch.flowSCap) exhausted at offset=\(currentOffset); stopped early. Split text at sentence boundaries for longer output.\n".utf8
-            ))
+            FileHandle.standardError.write(
+                Data(
+                    "PocketTTS: KV cache S_cap=\(PocketTTSArch.flowSCap) exhausted at offset=\(currentOffset); stopped early. Split text at sentence boundaries for longer output.\n"
+                        .utf8
+                ))
         }
     }
 
@@ -390,7 +397,7 @@ public final class Orchestrator: @unchecked Sendable {
             shape: [1, NSNumber(value: sTextPad)], dataType: .int32
         )
         tokensIn.withUnsafeMutableBufferPointer(ofType: Int32.self) { buf, _ in
-            for i in 0..<sTextPad {
+            for i in 0 ..< sTextPad {
                 buf[i] = i < sText ? textTokens[i] : 0
             }
         }
@@ -416,13 +423,17 @@ public final class Orchestrator: @unchecked Sendable {
         )
         // RoPE table sliced at [voiceOffset, voiceOffset + 128), fp16.
         let rcFp32 = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float32
         )
         let rsFp32 = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float32
         )
         flowRope.fillRange(
@@ -430,13 +441,17 @@ public final class Orchestrator: @unchecked Sendable {
             cosOut: rcFp32, sinOut: rsFp32
         )
         let rc = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float16
         )
         let rs = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float16
         )
         let ropeCount = sTextPad * PocketTTSArch.flowHalfDim
@@ -454,11 +469,11 @@ public final class Orchestrator: @unchecked Sendable {
         // 3. Run flow_lm_prefill.
         let prefillFeatures: [String: MLFeatureValue] = [
             "text_embeddings": MLFeatureValue(multiArray: embsMA),
-            "kv_cache_in":     MLFeatureValue(multiArray: voiceKV),
-            "scatter_mask":    MLFeatureValue(multiArray: scatter),
-            "attn_mask":       MLFeatureValue(multiArray: attn),
-            "rope_cos":        MLFeatureValue(multiArray: rc),
-            "rope_sin":        MLFeatureValue(multiArray: rs),
+            "kv_cache_in": MLFeatureValue(multiArray: voiceKV),
+            "scatter_mask": MLFeatureValue(multiArray: scatter),
+            "attn_mask": MLFeatureValue(multiArray: attn),
+            "rope_cos": MLFeatureValue(multiArray: rc),
+            "rope_sin": MLFeatureValue(multiArray: rs),
         ]
         let provider = try MLDictionaryFeatureProvider(dictionary: prefillFeatures)
         let out = try prefill_predict_autorelease(model: prefill, provider: provider)
@@ -467,8 +482,9 @@ public final class Orchestrator: @unchecked Sendable {
         }
         // 4. Copy the updated KV back into the caller-owned buffer (both fp16).
         precondition(kvOut.count == voiceKV.count)
-        memcpy(voiceKV.dataPointer, kvOut.dataPointer,
-               voiceKV.count * MemoryLayout<UInt16>.stride)
+        memcpy(
+            voiceKV.dataPointer, kvOut.dataPointer,
+            voiceKV.count * MemoryLayout<UInt16>.stride)
 
         return voiceOffset + sText
     }
@@ -498,8 +514,8 @@ public final class Orchestrator: @unchecked Sendable {
             throw OrchestratorError.prefillModelMissing
         }
         guard voiceConditioning.shape.count == 3,
-              voiceConditioning.shape[0].intValue == 1,
-              voiceConditioning.shape[2].intValue == PocketTTSArch.dModel
+            voiceConditioning.shape[0].intValue == 1,
+            voiceConditioning.shape[2].intValue == PocketTTSArch.dModel
         else {
             throw OrchestratorError.missingOutput(
                 "voice_conditioning shape \(voiceConditioning.shape) — expected [1, T, \(PocketTTSArch.dModel)]"
@@ -526,7 +542,7 @@ public final class Orchestrator: @unchecked Sendable {
         )
         let totalEmbs = sTextPad * PocketTTSArch.dModel
         let embsDst = embs.dataPointer.bindMemory(to: UInt16.self, capacity: totalEmbs)
-        for i in 0..<totalEmbs { embsDst[i] = 0 }
+        for i in 0 ..< totalEmbs { embsDst[i] = 0 }
         let copyCount = tVoice * PocketTTSArch.dModel
         let src = voiceConditioning.dataPointer.bindMemory(to: UInt16.self, capacity: copyCount)
         memcpy(embsDst, src, copyCount * MemoryLayout<UInt16>.stride)
@@ -542,24 +558,32 @@ public final class Orchestrator: @unchecked Sendable {
         )
         // RoPE table sliced at [0, sTextPad), fp16.
         let rcFp32 = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float32
         )
         let rsFp32 = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float32
         )
         flowRope.fillRange(offset: 0, length: sTextPad, cosOut: rcFp32, sinOut: rsFp32)
         let rc = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float16
         )
         let rs = try MLMultiArray(
-            shape: [1, NSNumber(value: sTextPad), 1,
-                    NSNumber(value: PocketTTSArch.flowHalfDim)],
+            shape: [
+                1, NSNumber(value: sTextPad), 1,
+                NSNumber(value: PocketTTSArch.flowHalfDim),
+            ],
             dataType: .float16
         )
         let ropeCount = sTextPad * PocketTTSArch.flowHalfDim
@@ -577,11 +601,11 @@ public final class Orchestrator: @unchecked Sendable {
         // 3. Run flow_lm_prefill with voiceKV (zero-filled) as kv_cache_in.
         let prefillFeatures: [String: MLFeatureValue] = [
             "text_embeddings": MLFeatureValue(multiArray: embs),
-            "kv_cache_in":     MLFeatureValue(multiArray: voiceKV),
-            "scatter_mask":    MLFeatureValue(multiArray: scatter),
-            "attn_mask":       MLFeatureValue(multiArray: attn),
-            "rope_cos":        MLFeatureValue(multiArray: rc),
-            "rope_sin":        MLFeatureValue(multiArray: rs),
+            "kv_cache_in": MLFeatureValue(multiArray: voiceKV),
+            "scatter_mask": MLFeatureValue(multiArray: scatter),
+            "attn_mask": MLFeatureValue(multiArray: attn),
+            "rope_cos": MLFeatureValue(multiArray: rc),
+            "rope_sin": MLFeatureValue(multiArray: rs),
         ]
         let provider = try MLDictionaryFeatureProvider(dictionary: prefillFeatures)
         let out = try prefill_predict_autorelease(model: prefill, provider: provider)
@@ -590,8 +614,9 @@ public final class Orchestrator: @unchecked Sendable {
         }
         // 4. Copy back into the caller-owned voiceKV (both fp16).
         precondition(kvOut.count == voiceKV.count)
-        memcpy(voiceKV.dataPointer, kvOut.dataPointer,
-               voiceKV.count * MemoryLayout<UInt16>.stride)
+        memcpy(
+            voiceKV.dataPointer, kvOut.dataPointer,
+            voiceKV.count * MemoryLayout<UInt16>.stride)
 
         return tVoice
     }
@@ -603,8 +628,7 @@ public final class Orchestrator: @unchecked Sendable {
         var result: MLFeatureProvider!
         var caught: Error?
         autoreleasepool {
-            do { result = try model.prediction(from: provider) }
-            catch { caught = error }
+            do { result = try model.prediction(from: provider) } catch { caught = error }
         }
         if let e = caught { throw e }
         return result
@@ -661,7 +685,8 @@ public final class Orchestrator: @unchecked Sendable {
             Float16Ops.convertFp16ToFp32(srcPtr: src, dstPtr: dst.baseAddress!, count: n)
         }
         // Clip + scale + cast.
-        var low: Float = -1, high: Float = 1
+        var low: Float = -1
+        var high: Float = 1
         var scale: Float = 32767
         vDSP_vclip(floats, 1, &low, &high, &floats, 1, vDSP_Length(n))
         vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(n))
@@ -692,7 +717,8 @@ public enum OrchestratorError: Error, CustomStringConvertible {
         case .textConditionerMissing:
             return "text_conditioner.mlpackage not loaded; cannot run in-Swift text prefill"
         case .emptyTextForVoiceOnly:
-            return "Voice-only handle requires text tokens (generate(text:voice:) with non-empty text)"
+            return
+                "Voice-only handle requires text tokens (generate(text:voice:) with non-empty text)"
         case .missingBosEmb:
             return "bos_emb missing: no voice-provided value and no default sidecar loaded"
         case .textTooLong(let n, let m):

@@ -83,9 +83,11 @@ public enum VoiceCatalog {
     /// guard against it being missing.
     public static func clonedVoicesDir(for language: String) -> URL {
         let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+        let docs =
+            fm.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? fm.temporaryDirectory
-        let dir = docs
+        let dir =
+            docs
             .appendingPathComponent("ClonedVoices", isDirectory: true)
             .appendingPathComponent(language, isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
@@ -111,9 +113,11 @@ public enum VoiceCatalog {
     /// read-only bundle content).
     public static func deleteCloned(_ entry: VoiceEntry) throws {
         guard entry.isCloned else {
-            throw NSError(domain: "VoiceCatalog", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Refusing to delete bundled voice \(entry.id)"
-            ])
+            throw NSError(
+                domain: "VoiceCatalog", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Refusing to delete bundled voice \(entry.id)"
+                ])
         }
         try FileManager.default.removeItem(at: entry.url)
     }
@@ -124,7 +128,8 @@ public enum VoiceCatalog {
     /// `pockettts_coreml.convert.export_speaker_proj`).
     public static func cloningAvailable(for language: String) -> Bool {
         guard let base = Bundle.main.resourceURL else { return false }
-        let proj = base
+        let proj =
+            base
             .appendingPathComponent("Languages", isDirectory: true)
             .appendingPathComponent(language, isDirectory: true)
             .appendingPathComponent("Artifacts", isDirectory: true)
@@ -144,23 +149,26 @@ public enum VoiceCatalog {
         at voicesDir: URL, language: String, isCloned: Bool
     ) -> [VoiceEntry] {
         let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(
-            at: voicesDir,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-        ) else { return [] }
+        guard
+            let items = try? fm.contentsOfDirectory(
+                at: voicesDir,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+            )
+        else { return [] }
 
         var entries: [VoiceEntry] = []
         entries.reserveCapacity(items.count)
         for url in items where url.pathExtension == "safetensors" {
             let stem = url.deletingPathExtension().lastPathComponent
-            entries.append(VoiceEntry(
-                id: stem,
-                displayName: titleCase(stem),
-                url: url,
-                language: language,
-                isCloned: isCloned
-            ))
+            entries.append(
+                VoiceEntry(
+                    id: stem,
+                    displayName: titleCase(stem),
+                    url: url,
+                    language: language,
+                    isCloned: isCloned
+                ))
         }
         entries.sort { $0.displayName < $1.displayName }
         return entries
@@ -180,7 +188,8 @@ public enum VoiceCatalog {
     private static func resolveVoicesDir(language: String) -> URL? {
         guard let base = Bundle.main.resourceURL else { return nil }
         let fm = FileManager.default
-        let candidate = base
+        let candidate =
+            base
             .appendingPathComponent("Languages", isDirectory: true)
             .appendingPathComponent(language, isDirectory: true)
             .appendingPathComponent("Voices", isDirectory: true)

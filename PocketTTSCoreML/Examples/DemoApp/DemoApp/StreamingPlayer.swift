@@ -8,8 +8,8 @@
 // so AVAudioEngine applies any necessary rate conversion.
 //
 
-import Foundation
 import AVFoundation
+import Foundation
 
 @MainActor
 public final class StreamingPlayer: ObservableObject {
@@ -148,17 +148,19 @@ public final class StreamingPlayer: ObservableObject {
     ) -> AVAudioPCMBuffer? {
         let sampleCount = data.count / MemoryLayout<Int16>.size
         guard sampleCount > 0 else { return nil }
-        guard let buf = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat,
-            frameCapacity: AVAudioFrameCount(sampleCount)
-        ) else { return nil }
+        guard
+            let buf = AVAudioPCMBuffer(
+                pcmFormat: sourceFormat,
+                frameCapacity: AVAudioFrameCount(sampleCount)
+            )
+        else { return nil }
         buf.frameLength = AVAudioFrameCount(sampleCount)
 
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             let src = raw.bindMemory(to: Int16.self).baseAddress!
             let dst = buf.floatChannelData![0]
             let scale: Float = 1.0 / 32768.0
-            for i in 0..<sampleCount {
+            for i in 0 ..< sampleCount {
                 dst[i] = Float(src[i]) * scale
             }
         }

@@ -1,5 +1,6 @@
-import XCTest
 import Foundation
+import XCTest
+
 @testable import PocketTTSCoreML
 
 /// Phase-4B: end-to-end with in-Swift text prefill.
@@ -13,11 +14,13 @@ import Foundation
 final class PrefillIntegrationTest: XCTestCase {
 
     func testVoiceOnlyGenerationMatchesGolden() async throws {
-        try XCTSkipUnless(FixturePaths.artifactsAvailable,
-                          "mlpackages not available at \(FixturePaths.artifactsDir.path)")
+        try XCTSkipUnless(
+            FixturePaths.artifactsAvailable,
+            "mlpackages not available at \(FixturePaths.artifactsDir.path)")
         try XCTSkipUnless(FixturePaths.tokenizerAvailable, "tokenizer missing")
-        try XCTSkipUnless(FixturePaths.voiceAvailable,
-                          "alba.safetensors missing at \(FixturePaths.voiceURL.path)")
+        try XCTSkipUnless(
+            FixturePaths.voiceAvailable,
+            "alba.safetensors missing at \(FixturePaths.voiceURL.path)")
         // Requires the new prefill .mlpackage + bos_emb sidecar.
         let prefillURL = FixturePaths.artifactsDir
             .appendingPathComponent("flow_lm_prefill.mlpackage")
@@ -35,7 +38,8 @@ final class PrefillIntegrationTest: XCTestCase {
         // (no `flow_kv_rank5` key => voice-only handle).
         let voice = try await tts.loadVoice(from: FixturePaths.voiceURL)
         guard case .voiceOnly = voice.kind else {
-            XCTFail("Expected .voiceOnly after loading raw voice bundle"); return
+            XCTFail("Expected .voiceOnly after loading raw voice bundle")
+            return
         }
 
         var samples: [Int16] = []
@@ -48,7 +52,7 @@ final class PrefillIntegrationTest: XCTestCase {
             pcm.withUnsafeBytes { raw in
                 let n = raw.count / 2
                 let buf = raw.bindMemory(to: Int16.self)
-                for i in 0..<n { samples.append(buf[i]) }
+                for i in 0 ..< n { samples.append(buf[i]) }
             }
         }
         let elapsed = Date().timeIntervalSince(startWall)
@@ -64,7 +68,9 @@ final class PrefillIntegrationTest: XCTestCase {
             XCTAssertEqual(sr, PocketTTSArch.sampleRate)
             let swiftFloats = samples.map { Float($0) / 32768.0 }
             let psnr = psnrFull(swiftFloats, goldenFloats)
-            print("[PrefillIntegration] RTF(cold,with-prefill)=\(coldRTF) | PSNR=\(psnr) dB | audio=\(audioSec)s")
+            print(
+                "[PrefillIntegration] RTF(cold,with-prefill)=\(coldRTF) | PSNR=\(psnr) dB | audio=\(audioSec)s"
+            )
             XCTAssertGreaterThanOrEqual(
                 psnr, 15.0,
                 "voice-only prefill path produced audio below PSNR floor (15 dB)"
@@ -76,7 +82,7 @@ final class PrefillIntegrationTest: XCTestCase {
         let n = min(a.count, b.count)
         guard n > 0 else { return 0 }
         var mse: Double = 0
-        for i in 0..<n {
+        for i in 0 ..< n {
             let d = Double(a[i] - b[i])
             mse += d * d
         }

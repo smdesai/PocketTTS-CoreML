@@ -21,7 +21,8 @@ public enum TextChunker {
     ) -> Preparation {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         precondition(!text.isEmpty, "Text prompt cannot be empty")
-        text = text
+        text =
+            text
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
             .replacingOccurrences(of: "  ", with: " ")
@@ -65,10 +66,11 @@ public enum TextChunker {
         // Matches reference: `_, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0]`
         // The leading element is dropped (usually the "▁" prefix token).
         let eosBoundaries = Array(tokenizer.encodeAsInt(".!...?").dropFirst())
-        let fallback     = Array(tokenizer.encodeAsInt(",;:").dropFirst())
+        let fallback = Array(tokenizer.encodeAsInt(",;:").dropFirst())
 
         let boundaries = findBoundaryIndices(tokens: tokens, boundaryTokens: Set(eosBoundaries))
-        let segments = segmentsFromBoundaries(tokens: tokens, boundaries: boundaries, tokenizer: tokenizer)
+        let segments = segmentsFromBoundaries(
+            tokens: tokens, boundaries: boundaries, tokenizer: tokenizer)
 
         var refined: [(count: Int, text: String)] = []
         for seg in segments {
@@ -76,9 +78,11 @@ public enum TextChunker {
                 refined.append(seg)
                 continue
             }
-            let subTokens = tokenizer.encodeAsInt(seg.text.trimmingCharacters(in: .whitespacesAndNewlines))
+            let subTokens = tokenizer.encodeAsInt(
+                seg.text.trimmingCharacters(in: .whitespacesAndNewlines))
             let subBounds = findBoundaryIndices(tokens: subTokens, boundaryTokens: Set(fallback))
-            let subSegs = segmentsFromBoundaries(tokens: subTokens, boundaries: subBounds, tokenizer: tokenizer)
+            let subSegs = segmentsFromBoundaries(
+                tokens: subTokens, boundaries: subBounds, tokenizer: tokenizer)
             if subSegs.count > 1 {
                 refined.append(contentsOf: subSegs)
             } else {
@@ -133,10 +137,10 @@ public enum TextChunker {
         tokenizer: Tokenizer
     ) -> [(count: Int, text: String)] {
         var out: [(Int, String)] = []
-        for i in 0..<(boundaries.count - 1) {
+        for i in 0 ..< (boundaries.count - 1) {
             let start = boundaries[i]
             let end = boundaries[i + 1]
-            let slice = Array(tokens[start..<end]).map { Int32($0) }
+            let slice = Array(tokens[start ..< end]).map { Int32($0) }
             let text = tokenizer.decode(slice)
             out.append((end - start, text))
         }

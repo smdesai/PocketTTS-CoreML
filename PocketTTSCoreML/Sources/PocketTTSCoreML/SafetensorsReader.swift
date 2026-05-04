@@ -16,9 +16,9 @@ public enum SafetensorsError: Error, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .fileTooSmall:            return "safetensors file is truncated"
-        case .badHeader:               return "safetensors header is not valid JSON"
-        case .missingKey(let k):       return "safetensors file missing key: \(k)"
+        case .fileTooSmall: return "safetensors file is truncated"
+        case .badHeader: return "safetensors header is not valid JSON"
+        case .missingKey(let k): return "safetensors file missing key: \(k)"
         case .unsupportedDType(let s): return "unsupported safetensors dtype: \(s)"
         case .shapeMismatch(let e, let a):
             return "safetensors shape mismatch: expected \(e), got \(a)"
@@ -27,22 +27,22 @@ public enum SafetensorsError: Error, CustomStringConvertible {
 }
 
 public enum SafetensorsDType: String, Sendable {
-    case F16  = "F16"
-    case F32  = "F32"
+    case F16 = "F16"
+    case F32 = "F32"
     case BF16 = "BF16"
-    case I64  = "I64"
-    case I32  = "I32"
-    case I16  = "I16"
-    case I8   = "I8"
-    case U8   = "U8"
+    case I64 = "I64"
+    case I32 = "I32"
+    case I16 = "I16"
+    case I8 = "I8"
+    case U8 = "U8"
     case BOOL = "BOOL"
 
     var bytesPerElement: Int {
         switch self {
         case .F16, .BF16, .I16: return 2
-        case .F32, .I32:        return 4
-        case .I64:              return 8
-        case .I8, .U8, .BOOL:   return 1
+        case .F32, .I32: return 4
+        case .I64: return 8
+        case .I8, .U8, .BOOL: return 1
         }
     }
 }
@@ -67,9 +67,10 @@ public final class SafetensorsReader: @unchecked Sendable {
         self.data = try Data(contentsOf: url, options: .alwaysMapped)
         guard data.count >= 8 else { throw SafetensorsError.fileTooSmall }
 
-        let headerSize = Int(data.withUnsafeBytes { raw -> UInt64 in
-            raw.load(fromByteOffset: 0, as: UInt64.self).littleEndian
-        })
+        let headerSize = Int(
+            data.withUnsafeBytes { raw -> UInt64 in
+                raw.load(fromByteOffset: 0, as: UInt64.self).littleEndian
+            })
         guard 8 + headerSize <= data.count else { throw SafetensorsError.fileTooSmall }
         let headerData = data.subdata(in: 8 ..< (8 + headerSize))
 
@@ -85,12 +86,12 @@ public final class SafetensorsReader: @unchecked Sendable {
         for (name, raw) in dict {
             if name == "__metadata__" { continue }
             guard let entry = raw as? [String: Any],
-                  let dtypeStr = entry["dtype"] as? String,
-                  let shapeRaw = entry["shape"] as? [Any],
-                  let offsets = entry["data_offsets"] as? [Any],
-                  offsets.count == 2,
-                  let start = (offsets[0] as? NSNumber)?.intValue,
-                  let end = (offsets[1] as? NSNumber)?.intValue
+                let dtypeStr = entry["dtype"] as? String,
+                let shapeRaw = entry["shape"] as? [Any],
+                let offsets = entry["data_offsets"] as? [Any],
+                offsets.count == 2,
+                let start = (offsets[0] as? NSNumber)?.intValue,
+                let end = (offsets[1] as? NSNumber)?.intValue
             else {
                 throw SafetensorsError.badHeader
             }
@@ -133,14 +134,14 @@ public final class SafetensorsReader: @unchecked Sendable {
             // Use vDSP-style manual fp16->fp32 conversion.
             blob.withUnsafeBytes { raw in
                 let src = raw.bindMemory(to: UInt16.self)
-                for i in 0..<count {
+                for i in 0 ..< count {
                     out[i] = Self.fp16ToFloat(src[i])
                 }
             }
         case .BF16:
             blob.withUnsafeBytes { raw in
                 let src = raw.bindMemory(to: UInt16.self)
-                for i in 0..<count {
+                for i in 0 ..< count {
                     // bf16 = upper 16 bits of fp32; zero-extend to fp32.
                     let bits: UInt32 = UInt32(src[i]) << 16
                     out[i] = Float(bitPattern: bits)
@@ -166,7 +167,7 @@ public final class SafetensorsReader: @unchecked Sendable {
         case .I32:
             blob.withUnsafeBytes { raw in
                 let src = raw.bindMemory(to: Int32.self)
-                for i in 0..<count { out[i] = Int64(src[i]) }
+                for i in 0 ..< count { out[i] = Int64(src[i]) }
             }
         default:
             throw SafetensorsError.unsupportedDType(info.dtype.rawValue)
@@ -179,7 +180,7 @@ public final class SafetensorsReader: @unchecked Sendable {
     static func fp16ToFloat(_ h: UInt16) -> Float {
         // Portable software fp16 -> fp32 conversion.
         let sign = UInt32(h & 0x8000) << 16
-        let exp  = UInt32((h >> 10) & 0x1F)
+        let exp = UInt32((h >> 10) & 0x1F)
         let mant = UInt32(h & 0x3FF)
         var bits: UInt32 = 0
         if exp == 0 {
@@ -198,7 +199,7 @@ public final class SafetensorsReader: @unchecked Sendable {
                 bits = sign | expBits | mantBits
             }
         } else if exp == 0x1F {
-            bits = sign | 0x7F800000 | (mant << 13)
+            bits = sign | 0x7F80_0000 | (mant << 13)
         } else {
             bits = sign | ((exp + 127 - 15) << 23) | (mant << 13)
         }
@@ -216,7 +217,10 @@ public enum SafetensorsWriter {
         public let dtype: SafetensorsDType
         public let data: Data
         public init(name: String, shape: [Int], dtype: SafetensorsDType, data: Data) {
-            self.name = name; self.shape = shape; self.dtype = dtype; self.data = data
+            self.name = name
+            self.shape = shape
+            self.dtype = dtype
+            self.data = data
         }
     }
 
@@ -237,7 +241,7 @@ public enum SafetensorsWriter {
         // Pad header to 8-byte alignment.
         var headerBytes = json
         let pad = (8 - headerBytes.count % 8) % 8
-        if pad > 0 { headerBytes.append(Data(repeating: 0x20, count: pad)) } // space pad
+        if pad > 0 { headerBytes.append(Data(repeating: 0x20, count: pad)) }  // space pad
         // Serialize headerSize as 8-byte little-endian without relying on
         // `withUnsafePointer(to:)`-returning-a-pointer (that pointer is
         // only valid inside the closure body; using it afterwards is a

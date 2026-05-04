@@ -1,5 +1,5 @@
-import Foundation
 import CSentencePieceBridge
+import Foundation
 
 /// Errors surfaced by `Tokenizer`.
 public enum TokenizerError: Error, CustomStringConvertible {
@@ -10,8 +10,8 @@ public enum TokenizerError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .modelLoadFailed(let path): return "Failed to load SentencePiece model at \(path)"
-        case .encodeFailed:              return "SentencePiece encode failed"
-        case .decodeFailed:              return "SentencePiece decode failed"
+        case .encodeFailed: return "SentencePiece encode failed"
+        case .decodeFailed: return "SentencePiece decode failed"
         }
     }
 }
@@ -78,7 +78,7 @@ public final class Tokenizer: @unchecked Sendable {
         guard n > 0, let pieces = out else { return [] }
         defer { spb_free_pieces(pieces, n) }
         var result: [String] = []
-        for i in 0..<Int(n) {
+        for i in 0 ..< Int(n) {
             if let p = pieces[i] { result.append(String(cString: p)) }
         }
         return result

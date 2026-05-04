@@ -1,6 +1,6 @@
-import Foundation
 import Accelerate
 import CoreML
+import Foundation
 
 /// Audio frame helpers — Float32 samples to/from int16 PCM (little-endian).
 public enum AudioStream {
@@ -27,8 +27,10 @@ public enum AudioStream {
     }
 
     /// Write a 24 kHz mono WAV file from in-memory int16 PCM.
-    public static func writeWAV(_ pcm: Data, sampleRate: Int = PocketTTSArch.sampleRate,
-                                to url: URL) throws {
+    public static func writeWAV(
+        _ pcm: Data, sampleRate: Int = PocketTTSArch.sampleRate,
+        to url: URL
+    ) throws {
         var header = Data(capacity: 44)
         let byteRate = UInt32(sampleRate * 2)
         let subchunk2Size = UInt32(pcm.count)
@@ -37,13 +39,13 @@ public enum AudioStream {
         header.appendLE(UInt32(chunkSize))
         header.append("WAVE".data(using: .ascii)!)
         header.append("fmt ".data(using: .ascii)!)
-        header.appendLE(UInt32(16))    // PCM fmt chunk
-        header.appendLE(UInt16(1))     // PCM format
-        header.appendLE(UInt16(1))     // mono
+        header.appendLE(UInt32(16))  // PCM fmt chunk
+        header.appendLE(UInt16(1))  // PCM format
+        header.appendLE(UInt16(1))  // mono
         header.appendLE(UInt32(sampleRate))
         header.appendLE(byteRate)
-        header.appendLE(UInt16(2))     // block align
-        header.appendLE(UInt16(16))    // bits/sample
+        header.appendLE(UInt16(2))  // block align
+        header.appendLE(UInt16(16))  // bits/sample
         header.append("data".data(using: .ascii)!)
         header.appendLE(subchunk2Size)
         var out = header
@@ -56,7 +58,9 @@ public enum AudioStream {
         let data = try Data(contentsOf: url)
         // Minimal RIFF reader — assumes well-formed 16-bit mono file.
         guard data.count >= 44 else {
-            throw NSError(domain: "AudioStream", code: 1, userInfo: [NSLocalizedDescriptionKey: "WAV too small"])
+            throw NSError(
+                domain: "AudioStream", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "WAV too small"])
         }
         let sr = Int(data.loadLE(offset: 24, as: UInt32.self))
         // Find "data" chunk.
@@ -64,7 +68,7 @@ public enum AudioStream {
         var dataOffset = -1
         var dataLen = 0
         while cursor + 8 <= data.count {
-            let id = data.subdata(in: cursor..<(cursor + 4))
+            let id = data.subdata(in: cursor ..< (cursor + 4))
             let size = Int(data.loadLE(offset: cursor + 4, as: UInt32.self))
             if String(data: id, encoding: .ascii) == "data" {
                 dataOffset = cursor + 8
@@ -74,16 +78,18 @@ public enum AudioStream {
             cursor += 8 + size
         }
         guard dataOffset >= 0 else {
-            throw NSError(domain: "AudioStream", code: 2, userInfo: [NSLocalizedDescriptionKey: "WAV missing data chunk"])
+            throw NSError(
+                domain: "AudioStream", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "WAV missing data chunk"])
         }
-        let pcm = data.subdata(in: dataOffset..<(dataOffset + dataLen))
+        let pcm = data.subdata(in: dataOffset ..< (dataOffset + dataLen))
         let count = dataLen / 2
         var ints = [Int16](repeating: 0, count: count)
         pcm.withUnsafeBytes { raw in
             memcpy(&ints, raw.baseAddress!, count * 2)
         }
         var floats = [Float](repeating: 0, count: count)
-        for i in 0..<count { floats[i] = Float(ints[i]) / 32768.0 }
+        for i in 0 ..< count { floats[i] = Float(ints[i]) / 32768.0 }
         return (floats, sr)
     }
 }

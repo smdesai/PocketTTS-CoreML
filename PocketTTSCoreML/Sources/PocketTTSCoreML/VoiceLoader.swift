@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 /// Handle to a loaded voice (KV cache snapshot).
 ///
@@ -148,7 +148,7 @@ public enum VoiceLoader {
         let (bosEmb, _) = try reader.float32Array(for: "bos_emb")
 
         var promptUTF8: Data? = nil
-        if let _ = reader.tensors["prompt_utf8"] {
+        if reader.tensors["prompt_utf8"] != nil {
             promptUTF8 = try reader.bytes(for: "prompt_utf8")
         }
 
@@ -160,7 +160,7 @@ public enum VoiceLoader {
             let width = shape[1]
             var seq: [[Float]] = []
             seq.reserveCapacity(steps)
-            for i in 0..<steps {
+            for i in 0 ..< steps {
                 seq.append(Array(flat[(i * width) ..< ((i + 1) * width)]))
             }
             noiseSeq = seq
@@ -193,13 +193,13 @@ public enum VoiceLoader {
         // Zero-fill first.
         let total = arr.count
         let dstPtr = arr.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-        for i in 0..<total { dstPtr[i] = 0 }
+        for i in 0 ..< total { dstPtr[i] = 0 }
 
         let rowStride = PocketTTSArch.flowSCap * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
         let perSlot = PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim
 
         var voiceOffset: Int? = nil
-        for layer in 0..<PocketTTSArch.flowLayers {
+        for layer in 0 ..< PocketTTSArch.flowLayers {
             let cacheKey = "transformer.layers.\(layer).self_attn/cache"
             let offKey = "transformer.layers.\(layer).self_attn/offset"
             guard reader.tensors[cacheKey] != nil, reader.tensors[offKey] != nil else {
@@ -208,7 +208,7 @@ public enum VoiceLoader {
             let (cache, cshape) = try reader.float32Array(for: cacheKey)
             // Shape: [2, 1, T_voice, H, D]
             guard cshape.count == 5, cshape[0] == 2, cshape[1] == 1,
-                  cshape[3] == PocketTTSArch.flowHeads, cshape[4] == PocketTTSArch.flowHeadDim
+                cshape[3] == PocketTTSArch.flowHeads, cshape[4] == PocketTTSArch.flowHeadDim
             else {
                 throw SafetensorsError.shapeMismatch(
                     expected: [2, 1, -1, PocketTTSArch.flowHeads, PocketTTSArch.flowHeadDim],
@@ -219,16 +219,18 @@ public enum VoiceLoader {
             let (offArr, _) = try reader.int64Array(for: offKey)
             let offset = Int(offArr[0])
             if let prior = voiceOffset, prior != offset {
-                throw NSError(domain: "VoiceLoader", code: 4, userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "voice KV has inconsistent per-layer offsets: \(prior) vs \(offset)"
-                ])
+                throw NSError(
+                    domain: "VoiceLoader", code: 4,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "voice KV has inconsistent per-layer offsets: \(prior) vs \(offset)"
+                    ])
             }
             voiceOffset = offset
             // NaN-sanitize reference cache (reference fills unwritten slots
             // with NaN; flow_lm_prefill requires finite inputs everywhere).
             var sanitized = cache
-            for i in 0..<sanitized.count where sanitized[i].isNaN { sanitized[i] = 0 }
+            for i in 0 ..< sanitized.count where sanitized[i].isNaN { sanitized[i] = 0 }
 
             // Copy first `offset` slots into rows 2*layer (K) and 2*layer+1 (V).
             // Source layout per K or V: [1, T_voice, H, D] → per slot H*D floats.
@@ -241,10 +243,10 @@ public enum VoiceLoader {
             let dstVBase = (2 * layer + 1) * rowStride
             sanitized.withUnsafeBufferPointer { sp in
                 var buf = [Float](repeating: 0, count: perSlot)
-                for s in 0..<copyLen {
+                for s in 0 ..< copyLen {
                     // K slot s
                     let srcK = sp.baseAddress!.advanced(by: kBase + s * perSlot)
-                    for i in 0..<perSlot { buf[i] = srcK[i] }
+                    for i in 0 ..< perSlot { buf[i] = srcK[i] }
                     buf.withUnsafeBufferPointer { bp in
                         Float16Ops.convertFp32ToFp16(
                             srcPtr: bp.baseAddress!,
@@ -254,7 +256,7 @@ public enum VoiceLoader {
                     }
                     // V slot s
                     let srcV = sp.baseAddress!.advanced(by: vBase + s * perSlot)
-                    for i in 0..<perSlot { buf[i] = srcV[i] }
+                    for i in 0 ..< perSlot { buf[i] = srcV[i] }
                     buf.withUnsafeBufferPointer { bp in
                         Float16Ops.convertFp32ToFp16(
                             srcPtr: bp.baseAddress!,
@@ -296,10 +298,13 @@ public enum VoiceLoader {
         case .prefilled:
             break  // fall through to legacy path
         }
-        guard case let .prefilled(kvBox, offset, bosEmb, promptUTF8, _) = handle.kind else {
-            throw NSError(domain: "VoiceLoader", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Unreachable"
-            ])
+        guard case .prefilled(let kvBox, let offset, let bosEmb, let promptUTF8, _) = handle.kind
+        else {
+            throw NSError(
+                domain: "VoiceLoader", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Unreachable"
+                ])
         }
         let kvArr = kvBox.array
         let n = kvArr.count
@@ -315,9 +320,11 @@ public enum VoiceLoader {
                 Float16Ops.convertFp16ToFp32(srcPtr: srcPtr, dstPtr: dst.baseAddress!, count: n)
             }
         default:
-            throw NSError(domain: "VoiceLoader", code: 3, userInfo: [
-                NSLocalizedDescriptionKey: "Unsupported kv dtype for save"
-            ])
+            throw NSError(
+                domain: "VoiceLoader", code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Unsupported kv dtype for save"
+                ])
         }
         let kvData = floats.withUnsafeBufferPointer { Data(buffer: $0) }
 
@@ -327,10 +334,13 @@ public enum VoiceLoader {
         let bosData = bosEmb.withUnsafeBufferPointer { Data(buffer: $0) }
 
         var tensors: [SafetensorsWriter.Tensor] = [
-            .init(name: "flow_kv_rank5",
-                  shape: [2 * PocketTTSArch.flowLayers, 1, PocketTTSArch.flowSCap,
-                          PocketTTSArch.flowHeads, PocketTTSArch.flowHeadDim],
-                  dtype: .F32, data: kvData),
+            .init(
+                name: "flow_kv_rank5",
+                shape: [
+                    2 * PocketTTSArch.flowLayers, 1, PocketTTSArch.flowSCap,
+                    PocketTTSArch.flowHeads, PocketTTSArch.flowHeadDim,
+                ],
+                dtype: .F32, data: kvData),
             .init(name: "flow_offset", shape: [1], dtype: .I64, data: offData),
             .init(name: "bos_emb", shape: [PocketTTSArch.latentDim], dtype: .F32, data: bosData),
         ]
@@ -348,8 +358,9 @@ public enum VoiceLoader {
     /// file round-trips through `VoiceLoader.loadVoiceOnly(reader:)`.
     static func saveVoiceOnly(kv: MLMultiArray, voiceOffset: Int, to url: URL) throws {
         precondition(kv.dataType == .float16, "expected fp16 rank-5 KV buffer")
-        precondition(kv.count == 2 * PocketTTSArch.flowLayers * PocketTTSArch.flowSCap
-                     * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim)
+        precondition(
+            kv.count == 2 * PocketTTSArch.flowLayers * PocketTTSArch.flowSCap
+                * PocketTTSArch.flowHeads * PocketTTSArch.flowHeadDim)
         let H = PocketTTSArch.flowHeads
         let D = PocketTTSArch.flowHeadDim
         let L = PocketTTSArch.flowLayers
@@ -366,7 +377,7 @@ public enum VoiceLoader {
         var offsetI64: Int64 = Int64(voiceOffset)
         let offData = withUnsafeBytes(of: &offsetI64) { Data($0) }
 
-        for layer in 0..<L {
+        for layer in 0 ..< L {
             let kBase = (2 * layer) * rowStride
             let vBase = (2 * layer + 1) * rowStride
             // Copy first voiceOffset slots of K then V into fp32 scratch.
@@ -387,15 +398,17 @@ public enum VoiceLoader {
                 )
             }
             let cacheData = f32.withUnsafeBufferPointer { Data(buffer: $0) }
-            tensors.append(.init(
-                name: "transformer.layers.\(layer).self_attn/cache",
-                shape: [2, 1, voiceOffset, H, D],
-                dtype: .F32, data: cacheData
-            ))
-            tensors.append(.init(
-                name: "transformer.layers.\(layer).self_attn/offset",
-                shape: [1], dtype: .I64, data: offData
-            ))
+            tensors.append(
+                .init(
+                    name: "transformer.layers.\(layer).self_attn/cache",
+                    shape: [2, 1, voiceOffset, H, D],
+                    dtype: .F32, data: cacheData
+                ))
+            tensors.append(
+                .init(
+                    name: "transformer.layers.\(layer).self_attn/offset",
+                    shape: [1], dtype: .I64, data: offData
+                ))
         }
         try SafetensorsWriter.write(tensors, to: url)
     }

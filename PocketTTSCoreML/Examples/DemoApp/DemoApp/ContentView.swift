@@ -75,8 +75,9 @@ struct ContentView: View {
     private var languageCard: some View {
         Button {
             guard !viewModel.isGenerating,
-                  !viewModel.isStreaming,
-                  !viewModel.isSwitchingLanguage else { return }
+                !viewModel.isStreaming,
+                !viewModel.isSwitchingLanguage
+            else { return }
             dismissKeyboard()
             showLanguageSheet = true
         } label: {
@@ -107,8 +108,8 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .disabled(
             viewModel.isGenerating
-            || viewModel.isStreaming
-            || viewModel.isSwitchingLanguage
+                || viewModel.isStreaming
+                || viewModel.isSwitchingLanguage
         )
         .sheet(isPresented: $showLanguageSheet) {
             LanguageListSheet(
@@ -129,9 +130,10 @@ struct ContentView: View {
     private var voiceCard: some View {
         Button {
             guard !viewModel.isGenerating,
-                  !viewModel.isStreaming,
-                  !viewModel.isSwitchingLanguage,
-                  !viewModel.voices.isEmpty else { return }
+                !viewModel.isStreaming,
+                !viewModel.isSwitchingLanguage,
+                !viewModel.voices.isEmpty
+            else { return }
             dismissKeyboard()
             showVoiceSheet = true
         } label: {
@@ -162,9 +164,9 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .disabled(
             viewModel.isGenerating
-            || viewModel.isStreaming
-            || viewModel.isSwitchingLanguage
-            || viewModel.voices.isEmpty
+                || viewModel.isStreaming
+                || viewModel.isSwitchingLanguage
+                || viewModel.voices.isEmpty
         )
         .sheet(isPresented: $showVoiceSheet) {
             VoiceListSheet(
@@ -193,9 +195,7 @@ struct ContentView: View {
                 }
                 .foregroundStyle(.secondary)
                 .disabled(
-                    viewModel.text.isEmpty ||
-                    viewModel.isGenerating ||
-                    viewModel.isStreaming
+                    viewModel.text.isEmpty || viewModel.isGenerating || viewModel.isStreaming
                 )
             }
 
@@ -242,8 +242,9 @@ struct ContentView: View {
             } else if viewModel.isStreaming {
                 let label: String = {
                     if playerBinder.totalChunks > 0 {
-                        let cur = min(max(playerBinder.currentChunk, 1),
-                                      playerBinder.totalChunks)
+                        let cur = min(
+                            max(playerBinder.currentChunk, 1),
+                            playerBinder.totalChunks)
                         return "Streaming \(cur)/\(playerBinder.totalChunks)"
                     }
                     return "Streaming"
@@ -259,7 +260,8 @@ struct ContentView: View {
                     showSpinner: true
                 )
             } else if viewModel.generatedPCM != nil
-                      || viewModel.stats.audioSeconds != nil {
+                || viewModel.stats.audioSeconds != nil
+            {
                 // "Audio ready" covers both Generate (has playable PCM)
                 // and Stream (no stored PCM but stats are populated).
                 statusBody(
@@ -359,9 +361,9 @@ struct ContentView: View {
                 systemImage: "waveform",
                 tint: .accentColor,
                 enabled: viewModel.isReady
-                         && !viewModel.isGenerating
-                         && !viewModel.isStreaming
-                         && !viewModel.isSwitchingLanguage
+                    && !viewModel.isGenerating
+                    && !viewModel.isStreaming
+                    && !viewModel.isSwitchingLanguage
             ) {
                 Task { await viewModel.generate() }
             }
@@ -371,9 +373,9 @@ struct ContentView: View {
                 systemImage: "dot.radiowaves.left.and.right",
                 tint: .orange,
                 enabled: viewModel.isReady
-                         && !viewModel.isGenerating
-                         && !viewModel.isStreaming
-                         && !viewModel.isSwitchingLanguage
+                    && !viewModel.isGenerating
+                    && !viewModel.isStreaming
+                    && !viewModel.isSwitchingLanguage
             ) {
                 Task { await viewModel.stream() }
             }
