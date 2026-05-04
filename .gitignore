@@ -51,7 +51,7 @@ PocketTTSCoreML/Examples/**/Resources/*.model
 **/xcuserdata/
 
 # Voice embeddings (CC-BY-NC-SA; regenerate from HF)
-voices/
+voices_english/
 voices_spanish/
 voices_german/
 voices_italian/
