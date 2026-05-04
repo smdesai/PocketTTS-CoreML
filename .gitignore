@@ -85,7 +85,3 @@ thoughts/shared/handoffs/kraken-*/
 # One-off debug scripts from kraken's voice-clone work; keep verify_clone.py
 tools/debug_*.py
 tools/verify_voice_prefill.py
-
-# Dev-tool configs kraken proposed but we didn't ask for
-.pre-commit-config.yaml
-.swift-format
