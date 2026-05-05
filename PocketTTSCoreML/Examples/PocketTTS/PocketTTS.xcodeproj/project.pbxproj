@@ -1,0 +1,536 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 63;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09780431408B615FA8D23690 /* PocketTTSLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0AE5AE14C258600FCCD347C8 /* StopPocketTTSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */; };
+		0D646AC7542E4ACFB5FF5FD9 /* PocketTTSLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8223BFED220541EA3E404D6F /* PocketTTSLiveActivityBundle.swift */; };
+		1B1E16EDB2927CAD428F8F7F /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */; };
+		447EA322175441EB3BE9488F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */; };
+		5600EE8E88C0E6F91ACCA756 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */; };
+		6F701B5D6E774E781368F892 /* PocketTTSLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C298FE663BC64BD5BE207B /* PocketTTSLiveActivity.swift */; };
+		70A42C34E828991D44940BA6 /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 74F2BF45832687DF82774F0A /* PocketTTSCoreML */; };
+		82AA9ADBB1CC610CA869CDFF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */; };
+		841A51847C0D113AB3B3872B /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */; };
+		9349B5780FB061904789A9C2 /* StopPocketTTSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */; };
+		A2745C0A5F1E3B4B8A0F6419 /* CloneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD65AD515E51F588C4B76A64 /* CloneSheet.swift */; };
+		A9919A580BCE842DCFEBC09F /* CloneRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */; };
+		B213149CEA4A75143BC8AF82 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */; };
+		B4FEF12F3C759CA422123887 /* MemoryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A1976556509468227333B9 /* MemoryMonitor.swift */; };
+		C5523EAFE9FBBE448265D3C5 /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */; };
+		C8D3C15A06F2873E44958406 /* PocketTTSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 368631F5529054C1692F4025 /* PocketTTSApp.swift */; };
+		DABC30C854C45544000039D2 /* TTSViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F425F81792363EF5CE4CDF /* TTSViewModel.swift */; };
+		E135D5DA5D99A4CDE4CAAAEA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7B029A8CBB67542B228A4E27 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		71BD2BFF6485BC8B9DC7136A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4D4F741E52D03DA47799322F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 18997DEA23F1FFCA28364FBA;
+			remoteInfo = PocketTTSLiveActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C121A02834D891F01F833D0B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				09780431408B615FA8D23690 /* PocketTTSLiveActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		368631F5529054C1692F4025 /* PocketTTSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSApp.swift; sourceTree = "<group>"; };
+		678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
+		6A998D2BBAEEEB0BCD082923 /* PocketTTS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketTTS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B029A8CBB67542B228A4E27 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8223BFED220541EA3E404D6F /* PocketTTSLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSLiveActivityBundle.swift; sourceTree = "<group>"; };
+		90C298FE663BC64BD5BE207B /* PocketTTSLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSLiveActivity.swift; sourceTree = "<group>"; };
+		90F425F81792363EF5CE4CDF /* TTSViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSViewModel.swift; sourceTree = "<group>"; };
+		93A1976556509468227333B9 /* MemoryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMonitor.swift; sourceTree = "<group>"; };
+		94609F5498B81B4B2639A8AE /* PocketTTSCoreML */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PocketTTSCoreML; path = ../..; sourceTree = SOURCE_ROOT; };
+		BD65AD515E51F588C4B76A64 /* CloneSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneSheet.swift; sourceTree = "<group>"; };
+		C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCatalog.swift; sourceTree = "<group>"; };
+		DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopPocketTTSIntent.swift; sourceTree = "<group>"; };
+		DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
+		E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PocketTTSLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
+		F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneRecorder.swift; sourceTree = "<group>"; };
+		FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSActivityAttributes.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DFA13321BC3C9913F01D77BD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				70A42C34E828991D44940BA6 /* PocketTTSCoreML in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		038AD070D1B55FC42D00F4B4 = {
+			isa = PBXGroup;
+			children = (
+				313421D56EC9CA647714C604 /* Packages */,
+				BD244182C90FD0D17C896071 /* PocketTTS */,
+				3E019DDBFED25DB4175114C1 /* PocketTTSLiveActivity */,
+				DF35DE7935AC0FDE11FACDA9 /* Shared */,
+				C390F3F5B484CFDFC085F653 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		313421D56EC9CA647714C604 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				94609F5498B81B4B2639A8AE /* PocketTTSCoreML */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		3E019DDBFED25DB4175114C1 /* PocketTTSLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				90C298FE663BC64BD5BE207B /* PocketTTSLiveActivity.swift */,
+				8223BFED220541EA3E404D6F /* PocketTTSLiveActivityBundle.swift */,
+			);
+			path = PocketTTSLiveActivity;
+			sourceTree = "<group>";
+		};
+		BD244182C90FD0D17C896071 /* PocketTTS */ = {
+			isa = PBXGroup;
+			children = (
+				7B029A8CBB67542B228A4E27 /* Assets.xcassets */,
+				F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */,
+				BD65AD515E51F588C4B76A64 /* CloneSheet.swift */,
+				C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */,
+				E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */,
+				93A1976556509468227333B9 /* MemoryMonitor.swift */,
+				DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */,
+				368631F5529054C1692F4025 /* PocketTTSApp.swift */,
+				678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */,
+				90F425F81792363EF5CE4CDF /* TTSViewModel.swift */,
+				CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */,
+			);
+			path = PocketTTS;
+			sourceTree = "<group>";
+		};
+		C390F3F5B484CFDFC085F653 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6A998D2BBAEEEB0BCD082923 /* PocketTTS.app */,
+				E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DF35DE7935AC0FDE11FACDA9 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */,
+				DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		18997DEA23F1FFCA28364FBA /* PocketTTSLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 65E4414B3570EFE57FC8392E /* Build configuration list for PBXNativeTarget "PocketTTSLiveActivity" */;
+			buildPhases = (
+				978E8B390931B67598589DB1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PocketTTSLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = PocketTTSLiveActivity;
+			productReference = E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		C4BC5ADC2D6B225E8DC6DFFF /* PocketTTS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A87950CF545CAABF7007B8C /* Build configuration list for PBXNativeTarget "PocketTTS" */;
+			buildPhases = (
+				68CF7BA9D77F9C66C7B59B3C /* Sources */,
+				FBFDF3FEF4EC70015CAF6882 /* Resources */,
+				DFA13321BC3C9913F01D77BD /* Frameworks */,
+				C121A02834D891F01F833D0B /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				29D827A92FDB2CF17BC2259F /* PBXTargetDependency */,
+			);
+			name = PocketTTS;
+			packageProductDependencies = (
+				74F2BF45832687DF82774F0A /* PocketTTSCoreML */,
+			);
+			productName = PocketTTS;
+			productReference = 6A998D2BBAEEEB0BCD082923 /* PocketTTS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4D4F741E52D03DA47799322F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					18997DEA23F1FFCA28364FBA = {
+						ProvisioningStyle = Automatic;
+					};
+					C4BC5ADC2D6B225E8DC6DFFF = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 61E5BC5B324ACF1AB8512347 /* Build configuration list for PBXProject "PocketTTS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 038AD070D1B55FC42D00F4B4;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BB0A989857656038519C8312 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C4BC5ADC2D6B225E8DC6DFFF /* PocketTTS */,
+				18997DEA23F1FFCA28364FBA /* PocketTTSLiveActivity */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FBFDF3FEF4EC70015CAF6882 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E135D5DA5D99A4CDE4CAAAEA /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		68CF7BA9D77F9C66C7B59B3C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9919A580BCE842DCFEBC09F /* CloneRecorder.swift in Sources */,
+				A2745C0A5F1E3B4B8A0F6419 /* CloneSheet.swift in Sources */,
+				82AA9ADBB1CC610CA869CDFF /* ContentView.swift in Sources */,
+				841A51847C0D113AB3B3872B /* LiveActivityController.swift in Sources */,
+				B4FEF12F3C759CA422123887 /* MemoryMonitor.swift in Sources */,
+				447EA322175441EB3BE9488F /* ModelDownloader.swift in Sources */,
+				B213149CEA4A75143BC8AF82 /* PocketTTSActivityAttributes.swift in Sources */,
+				C8D3C15A06F2873E44958406 /* PocketTTSApp.swift in Sources */,
+				9349B5780FB061904789A9C2 /* StopPocketTTSIntent.swift in Sources */,
+				C5523EAFE9FBBE448265D3C5 /* StreamingPlayer.swift in Sources */,
+				DABC30C854C45544000039D2 /* TTSViewModel.swift in Sources */,
+				1B1E16EDB2927CAD428F8F7F /* VoiceCatalog.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		978E8B390931B67598589DB1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5600EE8E88C0E6F91ACCA756 /* PocketTTSActivityAttributes.swift in Sources */,
+				6F701B5D6E774E781368F892 /* PocketTTSLiveActivity.swift in Sources */,
+				0D646AC7542E4ACFB5FF5FD9 /* PocketTTSLiveActivityBundle.swift in Sources */,
+				0AE5AE14C258600FCCD347C8 /* StopPocketTTSIntent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		29D827A92FDB2CF17BC2259F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 18997DEA23F1FFCA28364FBA /* PocketTTSLiveActivity */;
+			targetProxy = 71BD2BFF6485BC8B9DC7136A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		270EA57479DC2A547DE83F49 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEVELOPMENT_TEAM = TA92TEWDS4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketTTSLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.pockettts.PocketTTS.LiveActivity;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4E5B4714F15B7F5318267B16 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEVELOPMENT_TEAM = TA92TEWDS4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketTTSLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.pockettts.PocketTTS.LiveActivity;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4EEB5FEF81DED2AC3752E105 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = TA92TEWDS4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketTTS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.pockettts.PocketTTS;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		680BC28853F9CB3D656A0ACD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = TA92TEWDS4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketTTS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.pockettts.PocketTTS;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A82F8259ED3E56D6DD122934 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		C85C0E5F891CC92B08E7B27D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		61E5BC5B324ACF1AB8512347 /* Build configuration list for PBXProject "PocketTTS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C85C0E5F891CC92B08E7B27D /* Debug */,
+				A82F8259ED3E56D6DD122934 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		65E4414B3570EFE57FC8392E /* Build configuration list for PBXNativeTarget "PocketTTSLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				270EA57479DC2A547DE83F49 /* Debug */,
+				4E5B4714F15B7F5318267B16 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7A87950CF545CAABF7007B8C /* Build configuration list for PBXNativeTarget "PocketTTS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EEB5FEF81DED2AC3752E105 /* Debug */,
+				680BC28853F9CB3D656A0ACD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BB0A989857656038519C8312 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		74F2BF45832687DF82774F0A /* PocketTTSCoreML */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PocketTTSCoreML;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4D4F741E52D03DA47799322F /* Project object */;
+}

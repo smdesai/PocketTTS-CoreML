@@ -1,6 +1,6 @@
-name: DemoApp
+name: PocketTTS
 options:
-  bundleIdPrefix: com.sdesai.pockettts.demo
+  bundleIdPrefix: com.sdesai.pockettts
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -21,12 +21,12 @@ packages:
     path: ../..
 
 targets:
-  DemoApp:
+  PocketTTS:
     type: application
     platform: iOS
     deploymentTarget: "18.0"
     sources:
-      - path: DemoApp
+      - path: PocketTTS
         excludes:
           - "Info.plist"         # declared via info.path
       # Shared ActivityAttributes + StopPocketTTSIntent — compiled into
@@ -44,9 +44,9 @@ targets:
       # Embed the Live Activity widget extension inside the app bundle.
       - target: PocketTTSLiveActivity
     info:
-      path: DemoApp/Info.plist
+      path: PocketTTS/Info.plist
       properties:
-        CFBundleDisplayName: PocketTTS Demo
+        CFBundleDisplayName: PocketTTS
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -59,7 +59,7 @@ targets:
         # CloneSheet.swift. The user can either record a ~4s reference
         # clip or pick an existing audio file; the record path prompts
         # for mic permission via AVCaptureDevice.requestAccess.
-        NSMicrophoneUsageDescription: "PocketTTS Demo needs microphone access to clone your voice."
+        NSMicrophoneUsageDescription: "PocketTTS needs microphone access to clone your voice."
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -71,7 +71,7 @@ targets:
         UIViewControllerBasedStatusBarAppearance: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.demo.DemoApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.PocketTTS
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: "YES"
         SWIFT_VERSION: "6.0"
@@ -94,7 +94,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.demo.DemoApp.LiveActivity
+        PRODUCT_BUNDLE_IDENTIFIER: com.sdesai.pockettts.PocketTTS.LiveActivity
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
         ENABLE_PREVIEWS: "YES"
@@ -102,17 +102,16 @@ targets:
         # app host does. No Info.plist background keys here.
 
 # Declare the scheme explicitly so `xcodegen generate` re-creates
-# xcshareddata/xcschemes/DemoApp.xcscheme instead of wiping the
+# xcshareddata/xcschemes/PocketTTS.xcscheme instead of wiping the
 # directory. Without this block, xcodegen silently deletes the
-# scheme file whenever it regenerates the project (observed
-# 2026-05-02 during language-picker work).
+# scheme file whenever it regenerates the project.
 schemes:
-  DemoApp:
+  PocketTTS:
     build:
       parallelizeBuild: true
       buildImplicitDependencies: true
       targets:
-        DemoApp: all
+        PocketTTS: all
         PocketTTSLiveActivity: all
     run:
       config: Debug

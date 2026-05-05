@@ -14,10 +14,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "CD9365CEE296087B81D5EDE0"
-               BuildableName = "DemoApp.app"
-               BlueprintName = "DemoApp"
-               ReferencedContainer = "container:DemoApp.xcodeproj">
+               BlueprintIdentifier = "C4BC5ADC2D6B225E8DC6DFFF"
+               BuildableName = "PocketTTS.app"
+               BlueprintName = "PocketTTS"
+               ReferencedContainer = "container:PocketTTS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -28,10 +28,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "570090420C4C5B1544CF6669"
+               BlueprintIdentifier = "18997DEA23F1FFCA28364FBA"
                BuildableName = "PocketTTSLiveActivity.appex"
                BlueprintName = "PocketTTSLiveActivity"
-               ReferencedContainer = "container:DemoApp.xcodeproj">
+               ReferencedContainer = "container:PocketTTS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -44,10 +44,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CD9365CEE296087B81D5EDE0"
-            BuildableName = "DemoApp.app"
-            BlueprintName = "DemoApp"
-            ReferencedContainer = "container:DemoApp.xcodeproj">
+            BlueprintIdentifier = "C4BC5ADC2D6B225E8DC6DFFF"
+            BuildableName = "PocketTTS.app"
+            BlueprintName = "PocketTTS"
+            ReferencedContainer = "container:PocketTTS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -67,10 +67,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CD9365CEE296087B81D5EDE0"
-            BuildableName = "DemoApp.app"
-            BlueprintName = "DemoApp"
-            ReferencedContainer = "container:DemoApp.xcodeproj">
+            BlueprintIdentifier = "C4BC5ADC2D6B225E8DC6DFFF"
+            BuildableName = "PocketTTS.app"
+            BlueprintName = "PocketTTS"
+            ReferencedContainer = "container:PocketTTS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -84,10 +84,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CD9365CEE296087B81D5EDE0"
-            BuildableName = "DemoApp.app"
-            BlueprintName = "DemoApp"
-            ReferencedContainer = "container:DemoApp.xcodeproj">
+            BlueprintIdentifier = "C4BC5ADC2D6B225E8DC6DFFF"
+            BuildableName = "PocketTTS.app"
+            BlueprintName = "PocketTTS"
+            ReferencedContainer = "container:PocketTTS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
