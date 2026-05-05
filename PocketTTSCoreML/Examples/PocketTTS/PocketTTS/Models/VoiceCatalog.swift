@@ -261,6 +261,20 @@ public struct Language: Identifiable, Hashable, Sendable {
                 Appuyez sur Stream pour l'entendre diviser un long paragraphe en phrases.
                 """
         ),
+        // 8-bit palettized variant of the 24-layer French model. Same
+        // graph, same voices, ~600 MB smaller bundle (~1.1 GB on-disk vs
+        // ~1.7 GB for the fp16 French entry). Quality per verify_french
+        // is on par with or slightly better than fp16. Shipped as a
+        // separate picker entry so users can A/B-test the two variants
+        // without re-downloading.
+        Language(
+            id: "fr8", configName: "french_24l_palette8", displayName: "French (8-bit)",
+            defaultPrompt: """
+                Pocket TTS est un modèle léger de synthèse vocale. \
+                Il fonctionne entièrement sur votre iPhone, diffusant l'audio pendant que la voix parle. \
+                Appuyez sur Stream pour l'entendre diviser un long paragraphe en phrases.
+                """
+        ),
     ]
 
     /// The set of texts that count as "default demo prompts" — used to
