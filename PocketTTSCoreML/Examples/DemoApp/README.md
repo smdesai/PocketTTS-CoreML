@@ -6,8 +6,13 @@ text-to-speech generation via CoreML, sentence-level streaming, and
 
 ## What you can do
 
-- Pick any of the 21 bundled voices (e.g. *Alba*, *Bill Boerst*, *Peter
-  Yearsley*).
+- Pick a language (English, German, Italian, Spanish, Portuguese, French).
+  On first use of a language the app downloads the model + voices from
+  Hugging Face (`smdesai/pocket-tts-coreml`) into Application Support — a
+  one-time ~485 MB download per 6-layer language, ~1.7 GB for French
+  (24-layer). Subsequent launches load straight from disk.
+- Pick any of the bundled voices (e.g. *Alba*, *Bill Boerst*, *Peter
+  Yearsley*) for the current language.
 - Type text into the editor.
 - **Generate** — runs full-utterance generation and stores PCM in memory.
 - **Play** — plays the most recent generation.
@@ -27,7 +32,6 @@ Prerequisites:
 
 ```bash
 cd PocketTTSCoreML/Examples/DemoApp
-./prepare_resources.sh            # copies ~490 MB of models + voices
 xcodegen generate
 open DemoApp.xcodeproj
 ```
@@ -39,7 +43,9 @@ In Xcode:
    locally.
 3. Plug in your iPhone, select it as the run destination, and hit Run.
 
-First install pushes a ~490 MB `.ipa` to the device — allow a minute.
+The `.ipa` itself is small — model weights download on first use of each
+language. The first download will show a progress bar; subsequent launches
+skip it.
 
 ## Simulator
 
@@ -63,19 +69,34 @@ DemoApp/
 ├── DemoApp/
 │   ├── DemoAppApp.swift             @main
 │   ├── ContentView.swift            top-level UI
-│   ├── VoicePickerView.swift        Menu-backed voice selector
 │   ├── TTSViewModel.swift           @Observable; wraps PocketTTS actor
 │   ├── StreamingPlayer.swift        AVAudioEngine player
-│   ├── VoiceCatalog.swift           bundle enumeration + title-casing
-│   ├── Info.plist                   UIBackgroundModes: [audio]
-│   └── Resources/
-│       ├── Artifacts/               6 .mlmodelc bundles + sidecars
-│       ├── Voices/                  21 *.safetensors
-│       └── tokenizer.model
+│   ├── VoiceCatalog.swift           on-disk voice enumeration
+│   ├── ModelDownloader.swift        Hugging Face download on first use
+│   └── Info.plist                   UIBackgroundModes: [audio]
 ├── project.yml                      xcodegen config
-├── prepare_resources.sh             copies models + voices into Resources/
 └── README.md                        this file
 ```
+
+## Where downloaded assets live
+
+Per-language bundles are written to:
+
+```
+Application Support/pocket-tts-coreml/<configName>/
+    ├── *.mlmodelc/                  compiled CoreML models
+    ├── *.safetensors                bos embedding + optional speaker_proj
+    ├── voices/*.safetensors         per-language voices
+    ├── tokenizer.model
+    └── .complete                    sentinel written after a full download
+```
+
+`<configName>` matches the folder layout in the HF repo: `english`,
+`german`, `italian`, `spanish`, `portuguese`, `french_24l`. The root
+directory is marked "do not back up" so the weights don't bloat iCloud.
+
+Deleting the `.complete` sentinel forces a re-download on next launch of
+that language.
 
 ## Notes
 
@@ -83,6 +104,7 @@ DemoApp/
   playback survives backgrounding the app.
 - `AVAudioSession` is configured `.playback` / `.spokenAudio` — duck-able
   and respectful of the silent switch defaults.
-- First launch recompiles nothing (models ship pre-compiled as
-  `.mlmodelc`), but the first CoreML load still takes a few seconds on
-  cold cache. A warmup pass runs during the "Warming up…" status.
+- First launch of a language downloads the weights, then recompiles
+  nothing (models ship pre-compiled as `.mlmodelc`). The first CoreML
+  load still takes a few seconds on cold cache. A warmup pass runs during
+  the "Warming up…" status.

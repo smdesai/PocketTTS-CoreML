@@ -74,7 +74,7 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // a bluetooth preview.
         try session.setCategory(
             .playAndRecord, mode: .default,
-            options: [.defaultToSpeaker, .allowBluetooth])
+            options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setActive(true, options: [])
 
         let url = FileManager.default.temporaryDirectory

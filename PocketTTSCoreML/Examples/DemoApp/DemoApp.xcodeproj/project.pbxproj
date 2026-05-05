@@ -12,13 +12,14 @@
 		44A69E4B0026E491929CA0AA /* PocketTTSLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C232C3F03B1C47F1ECA8434 /* PocketTTSLiveActivityBundle.swift */; };
 		4C3AD4D14B0F43247611BC35 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3250255C05CBCD178D1A8B /* PocketTTSActivityAttributes.swift */; };
 		5359E55A501526BE82AC90B0 /* PocketTTSLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B51D588CB55A82FD76D485A /* PocketTTSLiveActivity.swift */; };
+		653695575ACCF6CBE2479D74 /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C21E51DA8EB6ACE37DAFE8 /* ModelDownloader.swift */; };
 		6E8B4E9B755128634B128CE1 /* StopPocketTTSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F52BC6DA3976F2EAEABBA2 /* StopPocketTTSIntent.swift */; };
 		72B2729E46166DC257EAE4A5 /* TTSViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D88526D45AC51AD780564F8 /* TTSViewModel.swift */; };
 		7747C7646C100FF7FA2C55F9 /* DemoAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E03DECCC43EE647A543BD618 /* DemoAppApp.swift */; };
 		8AEE08FED45C2CB6798B1D88 /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */; };
+		8F69C9E62CB698CE944AE5D5 /* StreamingPlayer.swift~ in Resources */ = {isa = PBXBuildFile; fileRef = C13CCB8900A28542C7745647 /* StreamingPlayer.swift~ */; };
 		9799690FEA80F6F269086DF6 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3250255C05CBCD178D1A8B /* PocketTTSActivityAttributes.swift */; };
 		AA86119AB9FE463EDDA11738 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C558F4562A2F0D78FC9C88A8 /* ContentView.swift */; };
-		AC60E3310793FFCE1C4A3B5F /* Languages in Resources */ = {isa = PBXBuildFile; fileRef = B07B05E7EBAE6A1C049E692F /* Languages */; };
 		BDCDCA20936D64D474CFA645 /* CloneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991B3F076DBF7BF77FE1E0FF /* CloneSheet.swift */; };
 		C8CBD7888DB8A3FB26C5EC58 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29837C9D7B8AC060204473D1 /* LiveActivityController.swift */; };
 		DFA0256A139D0EF6D51130AF /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 5BFA6417318D8A26B3B9B3E5 /* PocketTTSCoreML */; };
@@ -65,8 +66,9 @@
 		95338D23F36161FB31B3904D /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
 		991B3F076DBF7BF77FE1E0FF /* CloneSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneSheet.swift; sourceTree = "<group>"; };
 		9BB8F813047C0219B992C09E /* CloneRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneRecorder.swift; sourceTree = "<group>"; };
-		B07B05E7EBAE6A1C049E692F /* Languages */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Languages; path = DemoApp/Resources/Languages; sourceTree = SOURCE_ROOT; };
 		B7F52BC6DA3976F2EAEABBA2 /* StopPocketTTSIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopPocketTTSIntent.swift; sourceTree = "<group>"; };
+		B8C21E51DA8EB6ACE37DAFE8 /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
+		C13CCB8900A28542C7745647 /* StreamingPlayer.swift~ */ = {isa = PBXFileReference; lastKnownFileType = text; path = "StreamingPlayer.swift~"; sourceTree = "<group>"; };
 		C558F4562A2F0D78FC9C88A8 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E03DECCC43EE647A543BD618 /* DemoAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoAppApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -101,14 +103,6 @@
 				9F232383E4C9928863102A2E /* Shared */,
 				D4CC74EBFCAF08A1E61D64BF /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		7D0AB9953E006AF009EFF26C /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				B07B05E7EBAE6A1C049E692F /* Languages */,
-			);
-			path = Resources;
 			sourceTree = "<group>";
 		};
 		9E76448A8A8689BB96FE5017 /* Packages */ = {
@@ -146,10 +140,11 @@
 				E03DECCC43EE647A543BD618 /* DemoAppApp.swift */,
 				29837C9D7B8AC060204473D1 /* LiveActivityController.swift */,
 				185DCF3A3945F8CAAA37B6B5 /* MemoryMonitor.swift */,
+				B8C21E51DA8EB6ACE37DAFE8 /* ModelDownloader.swift */,
 				95338D23F36161FB31B3904D /* StreamingPlayer.swift */,
+				C13CCB8900A28542C7745647 /* StreamingPlayer.swift~ */,
 				5D88526D45AC51AD780564F8 /* TTSViewModel.swift */,
 				8FD3081F6598ED9F5D3706CF /* VoiceCatalog.swift */,
-				7D0AB9953E006AF009EFF26C /* Resources */,
 			);
 			path = DemoApp;
 			sourceTree = "<group>";
@@ -240,7 +235,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AC60E3310793FFCE1C4A3B5F /* Languages in Resources */,
+				8F69C9E62CB698CE944AE5D5 /* StreamingPlayer.swift~ in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -257,6 +252,7 @@
 				7747C7646C100FF7FA2C55F9 /* DemoAppApp.swift in Sources */,
 				C8CBD7888DB8A3FB26C5EC58 /* LiveActivityController.swift in Sources */,
 				0BCEA37AB4767A806339C094 /* MemoryMonitor.swift in Sources */,
+				653695575ACCF6CBE2479D74 /* ModelDownloader.swift in Sources */,
 				4C3AD4D14B0F43247611BC35 /* PocketTTSActivityAttributes.swift in Sources */,
 				6E8B4E9B755128634B128CE1 /* StopPocketTTSIntent.swift in Sources */,
 				FB0DC49CB0B53FFBF2E09001 /* StreamingPlayer.swift in Sources */,

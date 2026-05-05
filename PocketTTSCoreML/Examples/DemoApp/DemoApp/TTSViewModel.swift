@@ -46,6 +46,16 @@ public final class TTSViewModel {
     /// the bottom bar + voice picker while this is true.
     public var isSwitchingLanguage: Bool = false
 
+    /// True while a Hugging Face download is in flight for the selected
+    /// language. The UI shows a progress card (ContentView's statusCard)
+    /// and disables the bottom bar while this is true. Downloads happen
+    /// on first use of a language and never again unless the on-disk
+    /// sentinel is manually deleted.
+    public var isDownloading: Bool = false
+    /// Latest download progress snapshot. `nil` when no download is in
+    /// flight. Updated on the main actor from ModelDownloader's callback.
+    public var downloadProgress: DownloadProgress? = nil
+
     /// Stats surfaced in the status card. Values are nil until populated
     /// by load() (initSeconds) or generate() (rest). Reset at the start
     /// of each generate so the card reflects the most recent run.
@@ -71,6 +81,11 @@ public final class TTSViewModel {
     private var tts: PocketTTS? = nil
     private var tokenizer: Tokenizer? = nil
     private var runningTask: Task<Void, Never>? = nil
+
+    /// Downloads language bundles from Hugging Face on first use. Single
+    /// shared instance — it's stateless, just encapsulates URLSession +
+    /// tree-API logic.
+    private let downloader = ModelDownloader()
 
     /// Live Activity lifecycle (Lock Screen + Dynamic Island) for the
     /// current stream / play / clone run. See LiveActivityController.swift.
@@ -114,41 +129,67 @@ public final class TTSViewModel {
         }
     }
 
-    /// Resolve the per-language Resources subtree
-    /// (Resources/Languages/<id>/{Artifacts,tokenizer.model,Voices}).
+    /// Resolve the per-language resources previously downloaded into
+    /// Application Support. Layout:
+    ///
+    ///   Application Support/pocket-tts-coreml/<configName>/
+    ///       ├── *.mlmodelc        (artifacts — passed as `artifactsBundle`)
+    ///       ├── *.safetensors
+    ///       ├── *.json
+    ///       └── tokenizer.model
+    ///
+    /// PocketTTS's `artifactsBundle` parameter expects the directory that
+    /// directly contains the `.mlmodelc` bundles (matches the HF layout),
+    /// so the language directory itself is the artifacts bundle.
     private func resolveLanguageResources(
         _ language: Language
     ) throws -> (artifacts: URL, tokenizer: URL) {
-        guard let base = Bundle.main.resourceURL else {
-            throw DemoError.missingResource(
-                "Bundle.main.resourceURL is nil. This should never happen."
-            )
-        }
-        let langDir =
-            base
-            .appendingPathComponent("Languages", isDirectory: true)
-            .appendingPathComponent(language.id, isDirectory: true)
-        let artifactsDir = langDir.appendingPathComponent("Artifacts", isDirectory: true)
+        let langDir = ModelDownloader.languageDirectory(configName: language.configName)
         let tokenizerURL = langDir.appendingPathComponent("tokenizer.model")
         let fm = FileManager.default
-        guard fm.fileExists(atPath: artifactsDir.path) else {
+        guard fm.fileExists(atPath: langDir.path) else {
             throw DemoError.missingResource(
-                "Artifacts for \(language.displayName) not bundled at \(artifactsDir.path). "
-                    + "Run prepare_resources.sh."
+                "Language directory not found at \(langDir.path)."
             )
         }
         guard fm.fileExists(atPath: tokenizerURL.path) else {
             throw DemoError.missingResource(
-                "tokenizer.model for \(language.displayName) not bundled at "
-                    + "\(tokenizerURL.path). Run prepare_resources.sh."
+                "tokenizer.model not found at \(tokenizerURL.path). "
+                    + "The download may have been interrupted."
             )
         }
-        return (artifacts: artifactsDir, tokenizer: tokenizerURL)
+        return (artifacts: langDir, tokenizer: tokenizerURL)
     }
 
-    /// Instantiate PocketTTS + Tokenizer for `language` and refresh the
-    /// voice list. Used by both initial `load()` and `switchLanguage(to:)`.
+    /// Ensure the language bundle has been downloaded from Hugging Face,
+    /// then instantiate PocketTTS + Tokenizer and refresh the voice list.
+    /// Used by both initial `load()` and `switchLanguage(to:)`.
+    ///
+    /// On first use of `language`, this downloads ~485 MB (6-layer) or
+    /// ~1.7 GB (24-layer French) over the network before the model can
+    /// load. Progress is published via `downloadProgress` while the
+    /// download is in flight.
     private func loadLanguage(_ language: Language) async throws {
+        if !ModelDownloader.isInstalled(configName: language.configName) {
+            self.isDownloading = true
+            self.downloadProgress = .zero
+            self.status = "Downloading \(language.displayName) model…"
+            do {
+                try await downloader.ensureLanguageInstalled(
+                    configName: language.configName,
+                    onProgress: { [weak self] progress in
+                        self?.downloadProgress = progress
+                    }
+                )
+            } catch {
+                self.isDownloading = false
+                self.downloadProgress = nil
+                throw error
+            }
+            self.isDownloading = false
+            self.downloadProgress = nil
+        }
+
         let urls = try resolveLanguageResources(language)
         self.tokenizer = try Tokenizer(modelURL: urls.tokenizer)
 
@@ -163,10 +204,10 @@ public final class TTSViewModel {
         status = "Warming up \(language.displayName)…"
         await model.warmup()
 
-        let langVoices = VoiceCatalog.all(for: language.id)
+        let langVoices = VoiceCatalog.all(for: language)
         if langVoices.isEmpty {
             throw DemoError.missingResource(
-                "No voices found for \(language.displayName). Run prepare_resources.sh."
+                "No voices found for \(language.displayName). The download may be incomplete."
             )
         }
         self.voices = langVoices
@@ -179,7 +220,7 @@ public final class TTSViewModel {
     /// deleted from the picker. Optionally selects a specific voice id
     /// (e.g. the one that was just cloned).
     public func refreshVoices(selectingID: String? = nil) {
-        let all = VoiceCatalog.all(for: selectedLanguage.id)
+        let all = VoiceCatalog.all(for: selectedLanguage)
         self.voices = all
         if let wantedID = selectingID,
             let match = all.first(where: { $0.id == wantedID })

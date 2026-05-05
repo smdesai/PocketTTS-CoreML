@@ -104,6 +104,7 @@ public enum VoiceProjection {
         proj.withUnsafeBufferPointer { pPtr in
             latentsT.withUnsafeBufferPointer { aPtr in
                 outFp32.withUnsafeMutableBufferPointer { cPtr in
+
                     cblas_sgemm(
                         CblasRowMajor,
                         CblasNoTrans,  // A: [T, 32] not transposed

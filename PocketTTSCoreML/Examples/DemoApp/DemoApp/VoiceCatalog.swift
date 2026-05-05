@@ -1,22 +1,24 @@
 //
 // VoiceCatalog.swift
 //
-// Enumerates voice .safetensors files that were copied into the app bundle
-// by prepare_resources.sh, AND (new) any user-cloned voices stored under
-// Documents/ClonedVoices/<languageID>/. A voice file's filename stem is
-// used as the id; the display name is computed by splitting on '_' and
-// title-casing each part ("peter_yearsley" -> "Peter Yearsley").
+// Enumerates voice .safetensors files downloaded from the Hugging Face
+// bundle (`smdesai/pocket-tts-coreml`) into Application Support, AND any
+// user-cloned voices stored under Documents/ClonedVoices/<languageID>/.
+// A voice file's filename stem is used as the id; the display name is
+// computed by splitting on '_' and title-casing each part
+// ("peter_yearsley" -> "Peter Yearsley").
 //
 // Per-language layout (expected on disk):
 //
-//   Bundle:    Resources/Languages/<id>/Voices/*.safetensors    (read-only, bundled)
-//   Bundle:    Resources/Languages/<id>/Artifacts/...
-//   Bundle:    Resources/Languages/<id>/tokenizer.model
-//   Writable:  Documents/ClonedVoices/<id>/*.safetensors        (user clones)
+//   Downloaded: Application Support/pocket-tts-coreml/<configName>/voices/*.safetensors
+//   Downloaded: Application Support/pocket-tts-coreml/<configName>/*.mlmodelc/...
+//   Downloaded: Application Support/pocket-tts-coreml/<configName>/tokenizer.model
+//   Writable:   Documents/ClonedVoices/<id>/*.safetensors        (user clones)
 //
-// A legacy single-language layout (Resources/Voices/...) is still honored
-// as a fallback by `VoiceCatalog.bundled()` (no language id) so older demo
-// bundles keep working until prepare_resources.sh is re-run.
+// `<configName>` is `Language.configName` ("english", "french_24l", ...),
+// matching the folder layout in the Hugging Face repo. `<id>` for cloned
+// voices stays as the short language code ("en", "fr", ...) for
+// compatibility with existing on-device clones.
 //
 
 import Foundation
@@ -40,40 +42,33 @@ public struct VoiceEntry: Identifiable, Hashable, Sendable {
 
 public enum VoiceCatalog {
 
-    /// Combined list of bundled + cloned voices for the given language,
+    /// Combined list of downloaded + cloned voices for the given language,
     /// sorted alphabetically by displayName. Cloned voices appear inline
-    /// with the bundled ones; use `VoiceEntry.isCloned` to distinguish.
-    public static func all(for language: String) -> [VoiceEntry] {
-        let bundled = self.bundled(for: language)
-        let cloned = self.cloned(for: language)
-        return (bundled + cloned).sorted { $0.displayName < $1.displayName }
+    /// with the downloaded ones; use `VoiceEntry.isCloned` to distinguish.
+    public static func all(for language: Language) -> [VoiceEntry] {
+        let downloaded = self.downloaded(for: language)
+        let cloned = self.cloned(for: language.id)
+        return (downloaded + cloned).sorted { $0.displayName < $1.displayName }
     }
 
-    /// Return `.safetensors` voices bundled under `Resources/Languages/<id>/Voices/`,
-    /// sorted alphabetically by displayName. Falls back to an empty array
-    /// if the folder was not seeded (prepare_resources.sh not run for that
-    /// language).
-    public static func bundled(for language: String) -> [VoiceEntry] {
-        guard let voicesDir = resolveVoicesDir(language: language) else { return [] }
-        return scanVoices(at: voicesDir, language: language, isCloned: false)
+    /// Return `.safetensors` voices previously downloaded to
+    /// `Application Support/pocket-tts-coreml/<configName>/voices/`. Empty
+    /// when the language bundle hasn't been installed yet.
+    public static func downloaded(for language: Language) -> [VoiceEntry] {
+        let voicesDir = ModelDownloader.languageDirectory(configName: language.configName)
+            .appendingPathComponent("voices", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: voicesDir.path) else { return [] }
+        return scanVoices(at: voicesDir, language: language.id, isCloned: false)
     }
 
     /// Return user-cloned voices saved under
     /// `Documents/ClonedVoices/<languageID>/*.safetensors`. Empty if the
     /// user hasn't cloned anything for this language yet.
-    public static func cloned(for language: String) -> [VoiceEntry] {
-        let dir = clonedVoicesDir(for: language)
+    public static func cloned(for languageID: String) -> [VoiceEntry] {
+        let dir = clonedVoicesDir(for: languageID)
         let fm = FileManager.default
         guard fm.fileExists(atPath: dir.path) else { return [] }
-        return scanVoices(at: dir, language: language, isCloned: true)
-    }
-
-    /// Legacy flat-layout enumeration (pre language-picker demos). Returns
-    /// any `.safetensors` found directly under `Resources/Voices/` or the
-    /// bundle root, with an empty `language` field.
-    public static func bundled() -> [VoiceEntry] {
-        guard let voicesDir = resolveFlatVoicesDir() else { return [] }
-        return scanVoices(at: voicesDir, language: "", isCloned: false)
+        return scanVoices(at: dir, language: languageID, isCloned: true)
     }
 
     // MARK: - Cloned voice persistence
@@ -123,16 +118,13 @@ public enum VoiceCatalog {
     }
 
     /// Check whether voice cloning is available for `language`. Cloning
-    /// requires `Resources/Languages/<id>/Artifacts/speaker_proj.safetensors`
-    /// to be present (it's an optional sidecar emitted by
-    /// `pockettts_coreml.convert.export_speaker_proj`).
-    public static func cloningAvailable(for language: String) -> Bool {
-        guard let base = Bundle.main.resourceURL else { return false }
-        let proj =
-            base
-            .appendingPathComponent("Languages", isDirectory: true)
-            .appendingPathComponent(language, isDirectory: true)
-            .appendingPathComponent("Artifacts", isDirectory: true)
+    /// requires `speaker_proj.safetensors` to be present in the downloaded
+    /// language bundle (optional sidecar emitted by
+    /// `pockettts_coreml.convert.export_speaker_proj`). Returns false if
+    /// the bundle hasn't been downloaded yet OR if the sidecar is missing
+    /// from the installed bundle.
+    public static func cloningAvailable(for language: Language) -> Bool {
+        let proj = ModelDownloader.languageDirectory(configName: language.configName)
             .appendingPathComponent("speaker_proj.safetensors")
         return FileManager.default.fileExists(atPath: proj.path)
     }
@@ -184,33 +176,6 @@ public enum VoiceCatalog {
             .joined(separator: " ")
     }
 
-    /// Per-language: `Bundle.main.resourceURL/Languages/<id>/Voices/`.
-    private static func resolveVoicesDir(language: String) -> URL? {
-        guard let base = Bundle.main.resourceURL else { return nil }
-        let fm = FileManager.default
-        let candidate =
-            base
-            .appendingPathComponent("Languages", isDirectory: true)
-            .appendingPathComponent(language, isDirectory: true)
-            .appendingPathComponent("Voices", isDirectory: true)
-        if fm.fileExists(atPath: candidate.path) { return candidate }
-        return nil
-    }
-
-    /// Legacy flat-layout resolver (single-language builds).
-    private static func resolveFlatVoicesDir() -> URL? {
-        guard let base = Bundle.main.resourceURL else { return nil }
-        let fm = FileManager.default
-        let candidate = base.appendingPathComponent("Voices", isDirectory: true)
-        if fm.fileExists(atPath: candidate.path) { return candidate }
-        // Fallback: bundle root if .safetensors landed there directly.
-        if let items = try? fm.contentsOfDirectory(
-            at: base, includingPropertiesForKeys: nil
-        ), items.contains(where: { $0.pathExtension == "safetensors" }) {
-            return base
-        }
-        return nil
-    }
 }
 
 // MARK: - Language model
@@ -304,15 +269,13 @@ public struct Language: Identifiable, Hashable, Sendable {
         Set(all.map(\.defaultPrompt))
     }
 
-    /// Convenience: the first language that has any bundled voices. Used
-    /// as the initial selection when the app boots.
+    /// Convenience: the first language in the static list. Used as the
+    /// initial selection when the app boots. Unlike the old bundled-first
+    /// behaviour, we can't probe what's "installed" up-front without
+    /// taking on a disk scan at launch — since every language requires a
+    /// download on first use, defaulting to the first entry is fine and
+    /// keeps the picker order deterministic.
     public static var defaultBundled: Language {
-        for lang in all {
-            if !VoiceCatalog.bundled(for: lang.id).isEmpty { return lang }
-        }
-        // Fallback: first in the static list (still valid for identification
-        // even if its resources are missing — TTSViewModel.load() surfaces
-        // the error).
         return all[0]
     }
 }

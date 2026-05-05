@@ -76,7 +76,8 @@ struct ContentView: View {
         Button {
             guard !viewModel.isGenerating,
                 !viewModel.isStreaming,
-                !viewModel.isSwitchingLanguage
+                !viewModel.isSwitchingLanguage,
+                !viewModel.isDownloading
             else { return }
             dismissKeyboard()
             showLanguageSheet = true
@@ -110,6 +111,7 @@ struct ContentView: View {
             viewModel.isGenerating
                 || viewModel.isStreaming
                 || viewModel.isSwitchingLanguage
+                || viewModel.isDownloading
         )
         .sheet(isPresented: $showLanguageSheet) {
             LanguageListSheet(
@@ -132,6 +134,7 @@ struct ContentView: View {
             guard !viewModel.isGenerating,
                 !viewModel.isStreaming,
                 !viewModel.isSwitchingLanguage,
+                !viewModel.isDownloading,
                 !viewModel.voices.isEmpty
             else { return }
             dismissKeyboard()
@@ -166,6 +169,7 @@ struct ContentView: View {
             viewModel.isGenerating
                 || viewModel.isStreaming
                 || viewModel.isSwitchingLanguage
+                || viewModel.isDownloading
                 || viewModel.voices.isEmpty
         )
         .sheet(isPresented: $showVoiceSheet) {
@@ -231,6 +235,8 @@ struct ContentView: View {
                     title: "Error",
                     subtitle: err
                 )
+            } else if viewModel.isDownloading {
+                downloadCard
             } else if viewModel.isGenerating {
                 statusBody(
                     tint: .blue,
@@ -287,6 +293,82 @@ struct ContentView: View {
                 )
             }
         }
+    }
+
+    // MARK: - Download progress card
+
+    /// Blue-tinted status card rendered while a language bundle is being
+    /// downloaded from Hugging Face. Shows a determinate progress bar
+    /// once we know the total size, plus a byte counter and the name of
+    /// the currently-downloading file. Falls back to an indeterminate
+    /// spinner if the tree API hasn't yielded sizes yet.
+    private var downloadCard: some View {
+        let progress = viewModel.downloadProgress ?? .zero
+        let langName = viewModel.selectedLanguage.displayName
+        let total = progress.bytesTotal
+        let done = progress.bytesCompleted
+        let fraction: Double? = total > 0 ? min(1.0, Double(done) / Double(total)) : nil
+        let countsSubtitle: String = {
+            if progress.totalFiles == 0 {
+                return "Fetching file list…"
+            }
+            var s = "File \(progress.currentFileIndex) of \(progress.totalFiles)"
+            if !progress.currentFileName.isEmpty {
+                s += " • \(progress.currentFileName)"
+            }
+            return s
+        }()
+        let bytesSubtitle: String? = {
+            guard total > 0 else { return nil }
+            return "\(formatBytes(done)) / \(formatBytes(total))"
+        }()
+        return HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle().fill(Color.blue).frame(width: 34, height: 34)
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Downloading \(langName) model…")
+                    .font(.system(size: 17, weight: .semibold))
+                if let frac = fraction {
+                    ProgressView(value: frac)
+                        .progressViewStyle(.linear)
+                        .tint(.blue)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(.blue)
+                }
+                if let bs = bytesSubtitle {
+                    Text(bs)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text(countsSubtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.blue.opacity(0.12))
+        )
+    }
+
+    /// "485 MB" / "1.70 GB" — ByteCountFormatter with `.file` style.
+    private func formatBytes(_ bytes: Int64) -> String {
+        let fmt = ByteCountFormatter()
+        fmt.allowedUnits = [.useMB, .useGB]
+        fmt.countStyle = .file
+        return fmt.string(fromByteCount: bytes)
     }
 
     private var statsSubtitle: String? {

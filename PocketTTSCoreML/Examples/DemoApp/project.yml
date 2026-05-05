@@ -28,20 +28,16 @@ targets:
     sources:
       - path: DemoApp
         excludes:
-          - "Resources"          # included below explicitly
           - "Info.plist"         # declared via info.path
       # Shared ActivityAttributes + StopPocketTTSIntent — compiled into
       # both the app target (to start/update Live Activities + observe
       # the Stop Darwin notification) and the widget extension target
       # (to render views + declare the App Intent).
       - path: Shared
-      # Per-language resources. prepare_resources.sh builds
-      # Resources/Languages/<id>/{Artifacts,Voices,tokenizer.model} for every
-      # supported language; a single top-level folder reference picks them
-      # all up and preserves the .mlmodelc directory layouts exactly.
-      - path: DemoApp/Resources/Languages
-        type: folder
-        buildPhase: resources
+      # NOTE: Model artifacts + voices + tokenizers are NOT bundled.
+      # ModelDownloader.swift downloads them from Hugging Face on first
+      # use into Application Support/pocket-tts-coreml/<configName>/.
+      # This keeps the .ipa small (no 4+ GB of CoreML weights).
     dependencies:
       - package: PocketTTSCoreML
         product: PocketTTSCoreML

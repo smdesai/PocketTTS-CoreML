@@ -65,7 +65,7 @@ struct CloneSheet: View {
     /// Cloning is only possible if the current language's artifacts
     /// contain `speaker_proj.safetensors`. Computed at sheet-open time.
     private var cloningAvailable: Bool {
-        VoiceCatalog.cloningAvailable(for: viewModel.selectedLanguage.id)
+        VoiceCatalog.cloningAvailable(for: viewModel.selectedLanguage)
     }
 
     private var canClone: Bool {
