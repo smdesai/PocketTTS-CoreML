@@ -7,25 +7,25 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		04853EEBC1D305CF224B3EBA /* CloneRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C113896FA621633DB370D7D /* CloneRecorder.swift */; };
 		09780431408B615FA8D23690 /* PocketTTSLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0AE5AE14C258600FCCD347C8 /* StopPocketTTSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */; };
 		0D646AC7542E4ACFB5FF5FD9 /* PocketTTSLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8223BFED220541EA3E404D6F /* PocketTTSLiveActivityBundle.swift */; };
-		1B1E16EDB2927CAD428F8F7F /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */; };
-		447EA322175441EB3BE9488F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */; };
+		184F64129204C95A24D06D5E /* TTSViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0423F71AFB20B934347C57BA /* TTSViewModel.swift */; };
+		2D3B83B3E27D3FE2994BBB03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E09CC9AAD64FCE59421BD32 /* Assets.xcassets */; };
+		41F888C281507C5C0B96FE05 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB046E147CE626495D77529 /* LiveActivityController.swift */; };
 		5600EE8E88C0E6F91ACCA756 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */; };
+		5B0826E23AA0A85D73B50071 /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CF088C9C85FCE485B07EDE /* ModelDownloader.swift */; };
+		5F887969005B60418A58579E /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5479ABCA611C19FB5FD51D75 /* StreamingPlayer.swift */; };
+		6A6414D0FB851A8521731240 /* PocketTTSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 457D5C4036038284D14929F2 /* PocketTTSApp.swift */; };
 		6F701B5D6E774E781368F892 /* PocketTTSLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C298FE663BC64BD5BE207B /* PocketTTSLiveActivity.swift */; };
 		70A42C34E828991D44940BA6 /* PocketTTSCoreML in Frameworks */ = {isa = PBXBuildFile; productRef = 74F2BF45832687DF82774F0A /* PocketTTSCoreML */; };
-		82AA9ADBB1CC610CA869CDFF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */; };
-		841A51847C0D113AB3B3872B /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */; };
 		9349B5780FB061904789A9C2 /* StopPocketTTSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */; };
-		A2745C0A5F1E3B4B8A0F6419 /* CloneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD65AD515E51F588C4B76A64 /* CloneSheet.swift */; };
-		A9919A580BCE842DCFEBC09F /* CloneRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */; };
+		9AF1AC4442D0BE59DA0BE769 /* VoiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869712DFD19A460B3795275E /* VoiceCatalog.swift */; };
+		AD9A19F7C81D650C5A65A860 /* CloneSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02947B03892FBB15DEFCDFAE /* CloneSheet.swift */; };
 		B213149CEA4A75143BC8AF82 /* PocketTTSActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */; };
-		B4FEF12F3C759CA422123887 /* MemoryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A1976556509468227333B9 /* MemoryMonitor.swift */; };
-		C5523EAFE9FBBE448265D3C5 /* StreamingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */; };
-		C8D3C15A06F2873E44958406 /* PocketTTSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 368631F5529054C1692F4025 /* PocketTTSApp.swift */; };
-		DABC30C854C45544000039D2 /* TTSViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F425F81792363EF5CE4CDF /* TTSViewModel.swift */; };
-		E135D5DA5D99A4CDE4CAAAEA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7B029A8CBB67542B228A4E27 /* Assets.xcassets */; };
+		D501AF72E7B94A8BE299CAA8 /* MemoryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7BEA3CAD377207AFE62A668 /* MemoryMonitor.swift */; };
+		F155266645CDECC47E1806ED /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1EA13BBBF26C29985441485 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,23 +53,23 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		368631F5529054C1692F4025 /* PocketTTSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSApp.swift; sourceTree = "<group>"; };
-		678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
+		02947B03892FBB15DEFCDFAE /* CloneSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneSheet.swift; sourceTree = "<group>"; };
+		0423F71AFB20B934347C57BA /* TTSViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSViewModel.swift; sourceTree = "<group>"; };
+		0C113896FA621633DB370D7D /* CloneRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneRecorder.swift; sourceTree = "<group>"; };
+		2BB046E147CE626495D77529 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
+		457D5C4036038284D14929F2 /* PocketTTSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSApp.swift; sourceTree = "<group>"; };
+		5479ABCA611C19FB5FD51D75 /* StreamingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingPlayer.swift; sourceTree = "<group>"; };
 		6A998D2BBAEEEB0BCD082923 /* PocketTTS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketTTS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		7B029A8CBB67542B228A4E27 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7E09CC9AAD64FCE59421BD32 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8223BFED220541EA3E404D6F /* PocketTTSLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSLiveActivityBundle.swift; sourceTree = "<group>"; };
+		869712DFD19A460B3795275E /* VoiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCatalog.swift; sourceTree = "<group>"; };
 		90C298FE663BC64BD5BE207B /* PocketTTSLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSLiveActivity.swift; sourceTree = "<group>"; };
-		90F425F81792363EF5CE4CDF /* TTSViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSViewModel.swift; sourceTree = "<group>"; };
-		93A1976556509468227333B9 /* MemoryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMonitor.swift; sourceTree = "<group>"; };
+		92CF088C9C85FCE485B07EDE /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
 		94609F5498B81B4B2639A8AE /* PocketTTSCoreML */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PocketTTSCoreML; path = ../..; sourceTree = SOURCE_ROOT; };
-		BD65AD515E51F588C4B76A64 /* CloneSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneSheet.swift; sourceTree = "<group>"; };
-		C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCatalog.swift; sourceTree = "<group>"; };
 		DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopPocketTTSIntent.swift; sourceTree = "<group>"; };
-		DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
 		E105C2320F8E1BAC798B6EE5 /* PocketTTSLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PocketTTSLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
-		F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneRecorder.swift; sourceTree = "<group>"; };
+		E7BEA3CAD377207AFE62A668 /* MemoryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMonitor.swift; sourceTree = "<group>"; };
+		F1EA13BBBF26C29985441485 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		FE2211EA93346F1EFD1E945B /* PocketTTSActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTTSActivityAttributes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -96,6 +96,32 @@
 			);
 			sourceTree = "<group>";
 		};
+		179C3B5E9B9C3AA88A47B4EC /* VoiceCloning */ = {
+			isa = PBXGroup;
+			children = (
+				0C113896FA621633DB370D7D /* CloneRecorder.swift */,
+				02947B03892FBB15DEFCDFAE /* CloneSheet.swift */,
+			);
+			path = VoiceCloning;
+			sourceTree = "<group>";
+		};
+		1ED371205C6CE838366FB0C7 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				2BB046E147CE626495D77529 /* LiveActivityController.swift */,
+			);
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
+		243BD0AB3944B325A84ED9CC /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				92CF088C9C85FCE485B07EDE /* ModelDownloader.swift */,
+				869712DFD19A460B3795275E /* VoiceCatalog.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
 		313421D56EC9CA647714C604 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -113,20 +139,33 @@
 			path = PocketTTSLiveActivity;
 			sourceTree = "<group>";
 		};
+		6216F9E2D6EAB7877FB4DB19 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				5479ABCA611C19FB5FD51D75 /* StreamingPlayer.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		AD895B2F23F330DFCED9BF88 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				7E09CC9AAD64FCE59421BD32 /* Assets.xcassets */,
+				F1EA13BBBF26C29985441485 /* ContentView.swift */,
+				457D5C4036038284D14929F2 /* PocketTTSApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
 		BD244182C90FD0D17C896071 /* PocketTTS */ = {
 			isa = PBXGroup;
 			children = (
-				7B029A8CBB67542B228A4E27 /* Assets.xcassets */,
-				F3FE4FD02CAA18306EA6ADAF /* CloneRecorder.swift */,
-				BD65AD515E51F588C4B76A64 /* CloneSheet.swift */,
-				C7CE0DC03B6724E4D47A8D0B /* ContentView.swift */,
-				E9806C69073F5F9A9C1D9B55 /* LiveActivityController.swift */,
-				93A1976556509468227333B9 /* MemoryMonitor.swift */,
-				DF403F7B204B27FD7AA444F6 /* ModelDownloader.swift */,
-				368631F5529054C1692F4025 /* PocketTTSApp.swift */,
-				678E231E007EFCA56F6A0AAD /* StreamingPlayer.swift */,
-				90F425F81792363EF5CE4CDF /* TTSViewModel.swift */,
-				CB7E096E96E0D7A5D0652D49 /* VoiceCatalog.swift */,
+				AD895B2F23F330DFCED9BF88 /* App */,
+				6216F9E2D6EAB7877FB4DB19 /* Audio */,
+				1ED371205C6CE838366FB0C7 /* LiveActivity */,
+				243BD0AB3944B325A84ED9CC /* Models */,
+				ED8869512EECA4E2711F26BC /* ViewModel */,
+				179C3B5E9B9C3AA88A47B4EC /* VoiceCloning */,
 			);
 			path = PocketTTS;
 			sourceTree = "<group>";
@@ -147,6 +186,15 @@
 				DA4597AFC971BD524343C558 /* StopPocketTTSIntent.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		ED8869512EECA4E2711F26BC /* ViewModel */ = {
+			isa = PBXGroup;
+			children = (
+				E7BEA3CAD377207AFE62A668 /* MemoryMonitor.swift */,
+				0423F71AFB20B934347C57BA /* TTSViewModel.swift */,
+			);
+			path = ViewModel;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -235,7 +283,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E135D5DA5D99A4CDE4CAAAEA /* Assets.xcassets in Resources */,
+				2D3B83B3E27D3FE2994BBB03 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,18 +294,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A9919A580BCE842DCFEBC09F /* CloneRecorder.swift in Sources */,
-				A2745C0A5F1E3B4B8A0F6419 /* CloneSheet.swift in Sources */,
-				82AA9ADBB1CC610CA869CDFF /* ContentView.swift in Sources */,
-				841A51847C0D113AB3B3872B /* LiveActivityController.swift in Sources */,
-				B4FEF12F3C759CA422123887 /* MemoryMonitor.swift in Sources */,
-				447EA322175441EB3BE9488F /* ModelDownloader.swift in Sources */,
+				04853EEBC1D305CF224B3EBA /* CloneRecorder.swift in Sources */,
+				AD9A19F7C81D650C5A65A860 /* CloneSheet.swift in Sources */,
+				F155266645CDECC47E1806ED /* ContentView.swift in Sources */,
+				41F888C281507C5C0B96FE05 /* LiveActivityController.swift in Sources */,
+				D501AF72E7B94A8BE299CAA8 /* MemoryMonitor.swift in Sources */,
+				5B0826E23AA0A85D73B50071 /* ModelDownloader.swift in Sources */,
 				B213149CEA4A75143BC8AF82 /* PocketTTSActivityAttributes.swift in Sources */,
-				C8D3C15A06F2873E44958406 /* PocketTTSApp.swift in Sources */,
+				6A6414D0FB851A8521731240 /* PocketTTSApp.swift in Sources */,
 				9349B5780FB061904789A9C2 /* StopPocketTTSIntent.swift in Sources */,
-				C5523EAFE9FBBE448265D3C5 /* StreamingPlayer.swift in Sources */,
-				DABC30C854C45544000039D2 /* TTSViewModel.swift in Sources */,
-				1B1E16EDB2927CAD428F8F7F /* VoiceCatalog.swift in Sources */,
+				5F887969005B60418A58579E /* StreamingPlayer.swift in Sources */,
+				184F64129204C95A24D06D5E /* TTSViewModel.swift in Sources */,
+				9AF1AC4442D0BE59DA0BE769 /* VoiceCatalog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
