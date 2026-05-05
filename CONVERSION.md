@@ -196,17 +196,19 @@ any KV allocation or voice load — the init ordering enforces this.
 Single-writer-before-reads ordering makes the `unsafe` mutation
 safe in practice.
 
-### 2.4 Stage resources into the iOS demo app
+### 2.4 Build the iOS demo app
 
 ```bash
-cd PocketTTSCoreML/Examples/DemoApp
-./prepare_resources.sh   # wipes Resources/Languages/ and copies everything
+cd PocketTTSCoreML/Examples/PocketTTS
 xcodegen generate        # regenerate Xcode project; scheme is declared in project.yml
-open DemoApp.xcodeproj
+open PocketTTS.xcodeproj
 ```
 
-`prepare_resources.sh` reads its per-language source map from the
-top of the script; add entries there when adding a new language.
+The app no longer bundles model artifacts; on first use of a language it
+downloads the bundle from the `smdesai/pocket-tts-coreml` Hugging Face
+repo into Application Support. See
+`PocketTTSCoreML/Examples/PocketTTS/DemoApp/ModelDownloader.swift` for
+the HF repo id and layout.
 
 ### 2.5 Validate on command line
 
@@ -699,7 +701,7 @@ pocketTTS-CoreML/
 │   ├── Sources/PocketTTSCLI/               macOS CLI (generate/benchmark/clone)
 │   └── Examples/
 │       ├── iOSBenchmark/                   Phase 4B: RTF + ANE residency on device
-│       └── DemoApp/                        Phase 7: SwiftUI demo (Generate/Stream/Play/Share)
+│       └── PocketTTS/                      Phase 7: SwiftUI demo (Generate/Stream/Play/Share)
 ├── docs/
 │   ├── research/                           external research + reference code map
 │   ├── investigations/                     drift localization write-up

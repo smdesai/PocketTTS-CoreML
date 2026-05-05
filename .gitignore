@@ -76,7 +76,9 @@ Artifacts/fr_fp16_palette6_mlmodelc/
 Artifacts/fr_fp16_palette8/
 Artifacts/fr_fp16_palette8_mlmodelc/
 
-# Per-language DemoApp Resources (physical copies made by prepare_resources.sh)
+# Legacy per-language bundled Resources tree. No longer produced — the
+# demo app downloads models from Hugging Face on first use. Kept in the
+# ignore list so any leftover trees from old branches stay untracked.
 PocketTTSCoreML/Examples/**/Resources/Languages/
 
 # Kraken agent scratch dirs (handoff checkpoints, not intended for main branch)
@@ -85,3 +87,5 @@ thoughts/shared/handoffs/kraken-*/
 # One-off debug scripts from kraken's voice-clone work; keep verify_clone.py
 tools/debug_*.py
 tools/verify_voice_prefill.py
+
+pocket-tts-coreml/

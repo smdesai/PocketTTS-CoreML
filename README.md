@@ -299,17 +299,18 @@ present. The safetensors round-trip test does not require full model artifacts.
 
 ## Demo App
 
-Stage generated resources into the SwiftUI demo app:
+Build and run the SwiftUI demo app:
 
 ```bash
-cd PocketTTSCoreML/Examples/DemoApp
-./prepare_resources.sh
+cd PocketTTSCoreML/Examples/PocketTTS
 xcodegen generate
-open DemoApp.xcodeproj
+open PocketTTS.xcodeproj
 ```
 
-`prepare_resources.sh` copies language resources into the app bundle. Add new
-languages to the source map near the top of that script.
+Model artifacts + voices + tokenizers are **not** bundled in the app. On
+first use of a language, the app downloads them from the
+`smdesai/pocket-tts-coreml` Hugging Face repo into Application Support.
+See `PocketTTSCoreML/Examples/PocketTTS/README.md` for details.
 
 ## Directory Layout
 

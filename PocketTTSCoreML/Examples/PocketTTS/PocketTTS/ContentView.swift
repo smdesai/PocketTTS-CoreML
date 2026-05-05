@@ -29,7 +29,7 @@ struct ContentView: View {
                 // Scrollable content above the bottom bar.
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("PocketTTS CoreML")
+                        Text("PocketTTS")
                             .font(.system(size: 34, weight: .bold))
                             .padding(.top, 4)
 
