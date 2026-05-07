@@ -1,3 +1,10 @@
+//
+//  PocketTTS.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import CoreML
 import Foundation
 
@@ -10,13 +17,13 @@ public enum PocketTTSLoadError: Error, CustomStringConvertible {
     }
 }
 
-/// Public entry point. Loads the 5 `.mlpackage` bundles + tokenizer + Mimi
-/// state layout, and exposes `generate`/`loadVoice`/`cloneVoice`.
-///
-/// See `README.md` for Phase-4A caveats. Known limitation: text prefill in
-/// Swift is not yet implemented — `generate(text:)` requires a pre-prefilled
-/// VoiceHandle when using an arbitrary prompt. The helper
-/// `tools/export_full_prefill.py` produces one from a voice + prompt pair.
+// Public entry point. Loads the 5 `.mlpackage` bundles + tokenizer + Mimi
+// state layout, and exposes `generate`/`loadVoice`/`cloneVoice`.
+//
+// See `README.md` for Phase-4A caveats. Known limitation: text prefill in
+// Swift is not yet implemented — `generate(text:)` requires a pre-prefilled
+// VoiceHandle when using an arbitrary prompt. The helper
+// `tools/export_full_prefill.py` produces one from a voice + prompt pair.
 public actor PocketTTS {
     public struct GenerateOptions: Sendable {
         public var lsdDecodeSteps: Int = 1
@@ -37,12 +44,12 @@ public actor PocketTTS {
 
     private let tokenizer: Tokenizer
     private let orchestrator: Orchestrator
-    /// Lazy voice cloner — created on the FIRST cloneVoice() call and
-    /// cached for all subsequent clones. mimi_encoder loading + ANE
-    /// program prep costs ~10-25s on iPhone A19 Pro for the 24L French
-    /// bundle (~5s for 6L bundles), so we don't preload at PocketTTS
-    /// init — users who never clone don't pay the price. Second and
-    /// later clones in the same session reuse the warm encoder.
+    // Lazy voice cloner — created on the FIRST cloneVoice() call and
+    // cached for all subsequent clones. mimi_encoder loading + ANE
+    // program prep costs ~10-25s on iPhone A19 Pro for the 24L French
+    // bundle (~5s for 6L bundles), so we don't preload at PocketTTS
+    // init — users who never clone don't pay the price. Second and
+    // later clones in the same session reuse the warm encoder.
     private var voiceCloner: VoiceCloner?
 
     public init(
@@ -129,9 +136,9 @@ public actor PocketTTS {
 
     // MARK: - Private model loading
 
-    /// Compile an `.mlpackage` (or `.mlmodel`) on first load, cache the
-    /// compiled `.mlmodelc` alongside the package so subsequent launches
-    /// are quick.
+    // Compile an `.mlpackage` (or `.mlmodel`) on first load, cache the
+    // compiled `.mlmodelc` alongside the package so subsequent launches
+    // are quick.
     private static func loadCompiled(_ url: URL, config: MLModelConfiguration) async throws
         -> MLModel
     {
@@ -157,9 +164,9 @@ public actor PocketTTS {
         }
     }
 
-    /// Resolve a model artifact by stem (e.g. `"flow_lm_main"`). Prefers a
-    /// pre-compiled `.mlmodelc` in the bundle; falls back to `.mlpackage`
-    /// for dev builds. Returns nil if neither exists.
+    // Resolve a model artifact by stem (e.g. `"flow_lm_main"`). Prefers a
+    // pre-compiled `.mlmodelc` in the bundle; falls back to `.mlpackage`
+    // for dev builds. Returns nil if neither exists.
     private static func resolveArtifact(_ bundle: URL, stem: String) -> URL? {
         let fm = FileManager.default
         let mlmodelc = bundle.appendingPathComponent("\(stem).mlmodelc")
@@ -179,24 +186,24 @@ public actor PocketTTS {
         try VoiceLoader.save(handle, to: url)
     }
 
-    /// Run the full two-stage voice cloning pipeline (mimi_encoder →
-    /// speaker projection → flow_lm_prefill) on a reference waveform.
-    /// Returns a `.voiceOnly` handle that can be passed directly to
-    /// `generate(...)` without any Python helper.
-    ///
-    /// Requires the artifacts bundle to contain:
-    ///   - `mimi_encoder.mlpackage` (or compiled `.mlmodelc`)
-    ///   - `flow_lm_prefill.mlpackage`
-    ///   - `speaker_proj.safetensors`  (see `export_speaker_proj.py`)
+    // Run the full two-stage voice cloning pipeline (mimi_encoder →
+    // speaker projection → flow_lm_prefill) on a reference waveform.
+    // Returns a `.voiceOnly` handle that can be passed directly to
+    // `generate(...)` without any Python helper.
+    //
+    // Requires the artifacts bundle to contain:
+    //   - `mimi_encoder.mlpackage` (or compiled `.mlmodelc`)
+    //   - `flow_lm_prefill.mlpackage`
+    //   - `speaker_proj.safetensors`  (see `export_speaker_proj.py`)
     public func cloneVoice(from audioURL: URL) async throws -> VoiceHandle {
         let cloner = try await ensureVoiceCloner()
         return try await cloner.clone(from: audioURL)
     }
 
-    /// Build (and cache) the VoiceCloner on first use. The first call
-    /// pays the ~5-25s mimi_encoder MLModel init + ANE program prep
-    /// cost (6L ~5s, 24L french ~25s on A19 Pro). Subsequent calls
-    /// return the cached instance so the encoder stays warm.
+    // Build (and cache) the VoiceCloner on first use. The first call
+    // pays the ~5-25s mimi_encoder MLModel init + ANE program prep
+    // cost (6L ~5s, 24L french ~25s on A19 Pro). Subsequent calls
+    // return the cached instance so the encoder stays warm.
     private func ensureVoiceCloner() async throws -> VoiceCloner {
         if let cached = voiceCloner { return cached }
 
@@ -247,18 +254,18 @@ public actor PocketTTS {
         return cloner
     }
 
-    /// Encode text to SentencePiece ids (exposed for tests / parity checks).
+    // Encode text to SentencePiece ids (exposed for tests / parity checks).
     public nonisolated func tokenize(_ text: String) -> [Int32] {
         tokenizer.encode(text)
     }
 
-    /// Generate audio for `text`, streaming PCM16 LE 24 kHz mono.
-    ///
-    /// Behavior depends on the voice handle flavor:
-    /// - `.voiceOnly`: text is tokenized and a Swift-native prefill step
-    ///   (text_conditioner + flow_lm_prefill) runs before the AR loop.
-    /// - `.prefilled`: the `text` argument is ignored (text prefill was
-    ///   baked into the KV cache by `export_full_prefill.py`).
+    // Generate audio for `text`, streaming PCM16 LE 24 kHz mono.
+    //
+    // Behavior depends on the voice handle flavor:
+    // - `.voiceOnly`: text is tokenized and a Swift-native prefill step
+    //   (text_conditioner + flow_lm_prefill) runs before the AR loop.
+    // - `.prefilled`: the `text` argument is ignored (text prefill was
+    //   baked into the KV cache by `export_full_prefill.py`).
     public func generate(
         text: String,
         voice: VoiceHandle,

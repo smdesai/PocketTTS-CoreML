@@ -1,5 +1,10 @@
 //
-// LiveActivityController.swift
+//  LiveActivityController.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Thin wrapper around the ActivityKit lifecycle for PocketTTS's
 // streaming / playing / cloning runs. Kept separate from
@@ -24,14 +29,14 @@ import Foundation
 final class LiveActivityController {
     private var current: Activity<PocketTTSActivityAttributes>? = nil
 
-    /// Live Activities are a best-effort UX enhancement: if authorisation
-    /// is off or iOS refuses the request, we silently skip.
+    // Live Activities are a best-effort UX enhancement: if authorisation
+    // is off or iOS refuses the request, we silently skip.
     private var authorised: Bool {
         ActivityAuthorizationInfo().areActivitiesEnabled
     }
 
-    /// Start a new Live Activity for `mode`. Ends any previous activity
-    /// first so only one is ever on-screen.
+    // Start a new Live Activity for `mode`. Ends any previous activity
+    // first so only one is ever on-screen.
     func start(
         mode: PocketTTSActivityAttributes.ContentState.Mode,
         voiceName: String,
@@ -70,11 +75,11 @@ final class LiveActivityController {
         }
     }
 
-    /// Update the current activity's state. No-op if none is running.
-    /// `Activity` / `ActivityContent` are not Sendable (ActivityKit
-    /// predates strict concurrency) but are actually thread-safe in
-    /// practice. Use UnsafeActivityBox to carry the reference through
-    /// the await hop without tripping Swift 6's Sendable checks.
+    // Update the current activity's state. No-op if none is running.
+    // `Activity` / `ActivityContent` are not Sendable (ActivityKit
+    // predates strict concurrency) but are actually thread-safe in
+    // practice. Use UnsafeActivityBox to carry the reference through
+    // the await hop without tripping Swift 6's Sendable checks.
     func update(_ state: PocketTTSActivityAttributes.ContentState) {
         guard let activity = current else { return }
         let box = UnsafeActivityBox(activity)
@@ -86,7 +91,7 @@ final class LiveActivityController {
         }
     }
 
-    /// End and dismiss the current activity immediately.
+    // End and dismiss the current activity immediately.
     func end() async {
         guard let activity = current else { return }
         current = nil
@@ -94,20 +99,20 @@ final class LiveActivityController {
         await box.value.end(nil, dismissalPolicy: .immediate)
     }
 
-    /// Whether a Live Activity is currently on screen.
+    // Whether a Live Activity is currently on screen.
     var isActive: Bool { current != nil }
 }
 
 // MARK: - Darwin notification bridge
 
-/// Wrap the Stop-Darwin-notification lifecycle. The widget extension
-/// (StopPocketTTSIntent) posts a Darwin notification named
-/// `PocketTTSLiveActivityNotifications.stopName`; this listener
-/// invokes the supplied handler on the main actor when received.
-///
-/// Usage: construct once at app startup, retain it on the view model,
-/// pass a closure that calls `TTSViewModel.stop()`. `deinit` removes
-/// the observer so this is safe even if reconstructed (tests, etc).
+// Wrap the Stop-Darwin-notification lifecycle. The widget extension
+// (StopPocketTTSIntent) posts a Darwin notification named
+// `PocketTTSLiveActivityNotifications.stopName`; this listener
+// invokes the supplied handler on the main actor when received.
+//
+// Usage: construct once at app startup, retain it on the view model,
+// pass a closure that calls `TTSViewModel.stop()`. `deinit` removes
+// the observer so this is safe even if reconstructed (tests, etc).
 @MainActor
 final class StopNotificationListener {
     private let handler: @MainActor () -> Void

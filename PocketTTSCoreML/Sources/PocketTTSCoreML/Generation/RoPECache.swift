@@ -1,22 +1,29 @@
+//
+//  RoPECache.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import CoreML
 import Foundation
 
-/// Precomputed cosine/sine tables for RoPE (Rotary Position Embeddings).
-///
-/// Mirrors `pockettts_coreml.patches.build_rope_tables`:
-/// ```python
-/// half = head_dim // 2
-/// inv_freq = 1.0 / (10000 ** (arange(0, half) / half))   # [half]
-/// t = arange(0, max_context, dtype=float32)              # [T]
-/// freqs = einsum('i,j->ij', t, inv_freq)                 # [T, half]
-/// cos_t = cos(freqs)  # [T, half]
-/// sin_t = sin(freqs)  # [T, half]
-/// ```
-/// Sliced per-AR-step at shape `[1, 1, 1, half]`.
+// Precomputed cosine/sine tables for RoPE (Rotary Position Embeddings).
+//
+// Mirrors `pockettts_coreml.patches.build_rope_tables`:
+// ```python
+// half = head_dim // 2
+// inv_freq = 1.0 / (10000 ** (arange(0, half) / half))   # [half]
+// t = arange(0, max_context, dtype=float32)              # [T]
+// freqs = einsum('i,j->ij', t, inv_freq)                 # [T, half]
+// cos_t = cos(freqs)  # [T, half]
+// sin_t = sin(freqs)  # [T, half]
+// ```
+// Sliced per-AR-step at shape `[1, 1, 1, half]`.
 public struct RoPECache: Sendable {
     public let maxContext: Int
     public let halfDim: Int
-    /// `[maxContext * halfDim]` row-major; row `t` is cos[t, :halfDim].
+    // `[maxContext * halfDim]` row-major; row `t` is cos[t, :halfDim].
     public let cos: [Float]
     public let sin: [Float]
 
@@ -42,8 +49,8 @@ public struct RoPECache: Sendable {
         self.sin = s
     }
 
-    /// Slice one AR step at `offset`, writing into MLMultiArrays of shape
-    /// `[1, 1, 1, halfDim]`.
+    // Slice one AR step at `offset`, writing into MLMultiArrays of shape
+    // `[1, 1, 1, halfDim]`.
     public func fillStep(offset: Int, cosOut: MLMultiArray, sinOut: MLMultiArray) {
         precondition(
             cosOut.count == halfDim && sinOut.count == halfDim,
@@ -65,8 +72,8 @@ public struct RoPECache: Sendable {
         }
     }
 
-    /// Slice `length` steps starting at `offset`, writing into MLMultiArrays of
-    /// shape `[1, length, 1, halfDim]`.
+    // Slice `length` steps starting at `offset`, writing into MLMultiArrays of
+    // shape `[1, length, 1, halfDim]`.
     public func fillRange(
         offset: Int, length: Int,
         cosOut: MLMultiArray, sinOut: MLMultiArray

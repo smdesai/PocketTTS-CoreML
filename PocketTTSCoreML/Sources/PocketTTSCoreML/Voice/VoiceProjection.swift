@@ -1,40 +1,47 @@
+//
+//  VoiceProjection.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Accelerate
 import CoreML
 import Foundation
 
-/// Speaker-projection helpers for voice-cloning stage 2.
-///
-/// Stage 1 (in `VoiceCloner`) runs `mimi_encoder.mlpackage` on a 4-second
-/// reference waveform and produces latents of shape `fp16[1, 32, T_latent]`
-/// (T_latent = 50 for 4 s of audio at Mimi's 12.5 Hz frame rate).
-///
-/// Stage 2 projects those 32-d latents to `d_model` (1024) via a learned
-/// linear, producing `fp16[1, T_latent, 1024]` conditioning that is fed to
-/// `flow_lm_prefill.mlpackage` at KV slots `[0, T_latent)`. This file
-/// implements the projection; the prefill call lives in `Orchestrator`.
-///
-/// The projection is a simple `F.linear(latents, speaker_proj)` in the
-/// reference Python:
-///
-/// ```python
-/// latents = encoded.transpose(-1, -2).to(torch.float32)   # [1, 50, 32]
-/// conditioning = F.linear(latents, flow_lm.speaker_proj_weight)
-/// # -> [1, 50, 1024]
-/// ```
-///
-/// where `speaker_proj_weight` has shape `[d_model, ldim] = [1024, 32]`.
-/// `F.linear(x, W)` computes `x @ W.T`, so the effective matmul is
-/// `(T_latent, 32) @ (32, 1024) = (T_latent, 1024)`.
+// Speaker-projection helpers for voice-cloning stage 2.
+//
+// Stage 1 (in `VoiceCloner`) runs `mimi_encoder.mlpackage` on a 4-second
+// reference waveform and produces latents of shape `fp16[1, 32, T_latent]`
+// (T_latent = 50 for 4 s of audio at Mimi's 12.5 Hz frame rate).
+//
+// Stage 2 projects those 32-d latents to `d_model` (1024) via a learned
+// linear, producing `fp16[1, T_latent, 1024]` conditioning that is fed to
+// `flow_lm_prefill.mlpackage` at KV slots `[0, T_latent)`. This file
+// implements the projection; the prefill call lives in `Orchestrator`.
+//
+// The projection is a simple `F.linear(latents, speaker_proj)` in the
+// reference Python:
+//
+// ```python
+// latents = encoded.transpose(-1, -2).to(torch.float32)   # [1, 50, 32]
+// conditioning = F.linear(latents, flow_lm.speaker_proj_weight)
+// # -> [1, 50, 1024]
+// ```
+//
+// where `speaker_proj_weight` has shape `[d_model, ldim] = [1024, 32]`.
+// `F.linear(x, W)` computes `x @ W.T`, so the effective matmul is
+// `(T_latent, 32) @ (32, 1024) = (T_latent, 1024)`.
 public enum VoiceProjection {
-    /// Apply the speaker projection to Mimi encoder latents.
-    ///
-    /// - Parameters:
-    ///   - latents: `fp16[1, 32, T_latent]` MLMultiArray from `mimi_encoder`.
-    ///   - proj: Flattened `[d_model * ldim]` fp32 weights, row-major
-    ///     `[d_model=1024, ldim=32]`. Loaded from `speaker_proj.safetensors`.
-    ///   - dModel: typically 1024 (may change for future 24L variants).
-    /// - Returns: `fp16[1, T_latent, d_model]` conditioning tensor ready to
-    ///   feed to `flow_lm_prefill.mlpackage` as `text_embeddings` (padded).
+    // Apply the speaker projection to Mimi encoder latents.
+    //
+    // - Parameters:
+    //   - latents: `fp16[1, 32, T_latent]` MLMultiArray from `mimi_encoder`.
+    //   - proj: Flattened `[d_model * ldim]` fp32 weights, row-major
+    //     `[d_model=1024, ldim=32]`. Loaded from `speaker_proj.safetensors`.
+    //   - dModel: typically 1024 (may change for future 24L variants).
+    // - Returns: `fp16[1, T_latent, d_model]` conditioning tensor ready to
+    //   feed to `flow_lm_prefill.mlpackage` as `text_embeddings` (padded).
     public static func applySpeakerProjection(
         latents: MLMultiArray,
         proj: [Float],
@@ -137,18 +144,18 @@ public enum VoiceProjection {
         return (out, tLatent)
     }
 
-    /// Prepend the per-language `bos_before_voice` vector to a voice
-    /// conditioning tensor. Some configs (english/spanish/german/italian/
-    /// portuguese/french_24l, per their YAML) set
-    /// `insert_bos_before_voice: true`; the reference does
-    ///
-    /// ```python
-    /// prompt = torch.cat([flow_lm.bos_before_voice, prompt], dim=1)
-    /// ```
-    ///
-    /// which grows the sequence by one frame before the flow_lm prefill.
-    /// If `bosBeforeVoice` is nil we just pass conditioning through
-    /// unmodified.
+    // Prepend the per-language `bos_before_voice` vector to a voice
+    // conditioning tensor. Some configs (english/spanish/german/italian/
+    // portuguese/french_24l, per their YAML) set
+    // `insert_bos_before_voice: true`; the reference does
+    //
+    // ```python
+    // prompt = torch.cat([flow_lm.bos_before_voice, prompt], dim=1)
+    // ```
+    //
+    // which grows the sequence by one frame before the flow_lm prefill.
+    // If `bosBeforeVoice` is nil we just pass conditioning through
+    // unmodified.
     public static func prependBosBeforeVoice(
         conditioning: MLMultiArray,
         bosBeforeVoice: [Float]?,

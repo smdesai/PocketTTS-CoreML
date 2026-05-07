@@ -1,5 +1,10 @@
 //
-// TTSViewModel.swift
+//  TTSViewModel.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Main orchestrator for the demo UI. Owns:
 //  - the PocketTTS actor (heavy to construct; built once at launch)
@@ -20,10 +25,10 @@ import SwiftUI
 @Observable
 @MainActor
 public final class TTSViewModel {
-    /// Max tokens per sentence-chunk. Lower than the package default (50)
-    /// to keep each chunk's AR loop short enough that fp16 drift on
-    /// CoreML doesn't cause audible amplitude decay. ~25 tokens ≈ 2s of
-    /// audio, well under the ~40-frame drift threshold measured on device.
+    // Max tokens per sentence-chunk. Lower than the package default (50)
+    // to keep each chunk's AR loop short enough that fp16 drift on
+    // CoreML doesn't cause audible amplitude decay. ~25 tokens ≈ 2s of
+    // audio, well under the ~40-frame drift threshold measured on device.
     static let chunkMaxTokens: Int = 25
 
     // MARK: - User-facing state
@@ -38,27 +43,27 @@ public final class TTSViewModel {
     public var errorMessage: String? = nil
     public var isReady: Bool = false
 
-    /// Currently-selected language. Changing this triggers an async
-    /// `switchLanguage(to:)` call that disposes the PocketTTS actor and
-    /// reloads the per-language artifacts + tokenizer + voice list.
+    // Currently-selected language. Changing this triggers an async
+    // `switchLanguage(to:)` call that disposes the PocketTTS actor and
+    // reloads the per-language artifacts + tokenizer + voice list.
     public var selectedLanguage: Language = Language.defaultBundled
-    /// True while the async language switch is in flight. The UI disables
-    /// the bottom bar + voice picker while this is true.
+    // True while the async language switch is in flight. The UI disables
+    // the bottom bar + voice picker while this is true.
     public var isSwitchingLanguage: Bool = false
 
-    /// True while a Hugging Face download is in flight for the selected
-    /// language. The UI shows a progress card (ContentView's statusCard)
-    /// and disables the bottom bar while this is true. Downloads happen
-    /// on first use of a language and never again unless the on-disk
-    /// sentinel is manually deleted.
+    // True while a Hugging Face download is in flight for the selected
+    // language. The UI shows a progress card (ContentView's statusCard)
+    // and disables the bottom bar while this is true. Downloads happen
+    // on first use of a language and never again unless the on-disk
+    // sentinel is manually deleted.
     public var isDownloading: Bool = false
-    /// Latest download progress snapshot. `nil` when no download is in
-    /// flight. Updated on the main actor from ModelDownloader's callback.
+    // Latest download progress snapshot. `nil` when no download is in
+    // flight. Updated on the main actor from ModelDownloader's callback.
     public var downloadProgress: DownloadProgress? = nil
 
-    /// Stats surfaced in the status card. Values are nil until populated
-    /// by load() (initSeconds) or generate() (rest). Reset at the start
-    /// of each generate so the card reflects the most recent run.
+    // Stats surfaced in the status card. Values are nil until populated
+    // by load() (initSeconds) or generate() (rest). Reset at the start
+    // of each generate so the card reflects the most recent run.
     public struct Stats {
         public var initSeconds: Double? = nil  // model load + warmup (one-time)
         public var firstAudioSeconds: Double? = nil  // wall time to first PCM chunk
@@ -69,11 +74,11 @@ public final class TTSViewModel {
     }
     public var stats = Stats()
 
-    /// Polls `phys_footprint` during generate/stream to report peak RAM.
+    // Polls `phys_footprint` during generate/stream to report peak RAM.
     private let peakMemory = PeakMemoryTracker()
 
-    /// The StreamingPlayer is observed directly by the View — we keep a
-    /// strong reference here but the view sets up its own @StateObject.
+    // The StreamingPlayer is observed directly by the View — we keep a
+    // strong reference here but the view sets up its own @StateObject.
     public let player: StreamingPlayer
 
     // MARK: - Internal
@@ -82,17 +87,17 @@ public final class TTSViewModel {
     private var tokenizer: Tokenizer? = nil
     private var runningTask: Task<Void, Never>? = nil
 
-    /// Downloads language bundles from Hugging Face on first use. Single
-    /// shared instance — it's stateless, just encapsulates URLSession +
-    /// tree-API logic.
+    // Downloads language bundles from Hugging Face on first use. Single
+    // shared instance — it's stateless, just encapsulates URLSession +
+    // tree-API logic.
     private let downloader = ModelDownloader()
 
-    /// Live Activity lifecycle (Lock Screen + Dynamic Island) for the
-    /// current stream / play / clone run. See LiveActivityController.swift.
+    // Live Activity lifecycle (Lock Screen + Dynamic Island) for the
+    // current stream / play / clone run. See LiveActivityController.swift.
     private let liveActivity = LiveActivityController()
 
-    /// Cross-process listener for the widget extension's Stop button.
-    /// Retained so the Darwin observer survives for the app lifetime.
+    // Cross-process listener for the widget extension's Stop button.
+    // Retained so the Darwin observer survives for the app lifetime.
     private var stopListener: StopNotificationListener?
 
     // MARK: - Init
@@ -111,7 +116,7 @@ public final class TTSViewModel {
         self.stopListener?.start()
     }
 
-    /// Async-load the model. Call from a `.task` modifier on the root view.
+    // Async-load the model. Call from a `.task` modifier on the root view.
     public func load() async {
         guard !isReady && errorMessage == nil else { return }
         let initStart = Date()
@@ -129,18 +134,18 @@ public final class TTSViewModel {
         }
     }
 
-    /// Resolve the per-language resources previously downloaded into
-    /// Application Support. Layout:
-    ///
-    ///   Application Support/pocket-tts-coreml/<configName>/
-    ///       ├── *.mlmodelc        (artifacts — passed as `artifactsBundle`)
-    ///       ├── *.safetensors
-    ///       ├── *.json
-    ///       └── tokenizer.model
-    ///
-    /// PocketTTS's `artifactsBundle` parameter expects the directory that
-    /// directly contains the `.mlmodelc` bundles (matches the HF layout),
-    /// so the language directory itself is the artifacts bundle.
+    // Resolve the per-language resources previously downloaded into
+    // Application Support. Layout:
+    //
+    //   Application Support/pocket-tts-coreml/<configName>/
+    //       ├── *.mlmodelc        (artifacts — passed as `artifactsBundle`)
+    //       ├── *.safetensors
+    //       ├── *.json
+    //       └── tokenizer.model
+    //
+    // PocketTTS's `artifactsBundle` parameter expects the directory that
+    // directly contains the `.mlmodelc` bundles (matches the HF layout),
+    // so the language directory itself is the artifacts bundle.
     private func resolveLanguageResources(
         _ language: Language
     ) throws -> (artifacts: URL, tokenizer: URL) {
@@ -161,14 +166,14 @@ public final class TTSViewModel {
         return (artifacts: langDir, tokenizer: tokenizerURL)
     }
 
-    /// Ensure the language bundle has been downloaded from Hugging Face,
-    /// then instantiate PocketTTS + Tokenizer and refresh the voice list.
-    /// Used by both initial `load()` and `switchLanguage(to:)`.
-    ///
-    /// On first use of `language`, this downloads ~485 MB (6-layer) or
-    /// ~1.7 GB (24-layer French) over the network before the model can
-    /// load. Progress is published via `downloadProgress` while the
-    /// download is in flight.
+    // Ensure the language bundle has been downloaded from Hugging Face,
+    // then instantiate PocketTTS + Tokenizer and refresh the voice list.
+    // Used by both initial `load()` and `switchLanguage(to:)`.
+    //
+    // On first use of `language`, this downloads ~485 MB (6-layer) or
+    // ~1.7 GB (24-layer French) over the network before the model can
+    // load. Progress is published via `downloadProgress` while the
+    // download is in flight.
     private func loadLanguage(_ language: Language) async throws {
         if !ModelDownloader.isInstalled(configName: language.configName) {
             self.isDownloading = true
@@ -214,11 +219,11 @@ public final class TTSViewModel {
         self.selectedVoice = langVoices.first
     }
 
-    /// Refresh the voice list for the currently-selected language by
-    /// re-scanning both bundled voices and Documents/ClonedVoices/<id>/.
-    /// Used after the clone flow saves a new voice, and after a clone is
-    /// deleted from the picker. Optionally selects a specific voice id
-    /// (e.g. the one that was just cloned).
+    // Refresh the voice list for the currently-selected language by
+    // re-scanning both bundled voices and Documents/ClonedVoices/<id>/.
+    // Used after the clone flow saves a new voice, and after a clone is
+    // deleted from the picker. Optionally selects a specific voice id
+    // (e.g. the one that was just cloned).
     public func refreshVoices(selectingID: String? = nil) {
         let all = VoiceCatalog.all(for: selectedLanguage)
         self.voices = all
@@ -235,14 +240,14 @@ public final class TTSViewModel {
         }
     }
 
-    /// Run the full on-device voice cloning pipeline
-    /// (mimi_encoder → speaker_proj → flow_lm_prefill) on the audio at
-    /// `audioURL`, save the resulting VoiceHandle as a `.safetensors` under
-    /// Documents/ClonedVoices/<language>/<name>.safetensors, and return
-    /// the filename stem that was used (caller uses this to select the
-    /// newly-cloned voice in the picker). Throws if cloning is unavailable
-    /// for this language (missing speaker_proj sidecar) or the pipeline
-    /// errors out.
+    // Run the full on-device voice cloning pipeline
+    // (mimi_encoder → speaker_proj → flow_lm_prefill) on the audio at
+    // `audioURL`, save the resulting VoiceHandle as a `.safetensors` under
+    // Documents/ClonedVoices/<language>/<name>.safetensors, and return
+    // the filename stem that was used (caller uses this to select the
+    // newly-cloned voice in the picker). Throws if cloning is unavailable
+    // for this language (missing speaker_proj sidecar) or the pipeline
+    // errors out.
     public func cloneVoice(from audioURL: URL, named rawName: String) async throws -> String {
         guard let tts = tts else {
             throw DemoError.missingResource("PocketTTS not loaded yet.")
@@ -269,10 +274,10 @@ public final class TTSViewModel {
         return destURL.deletingPathExtension().lastPathComponent
     }
 
-    /// Switch the runtime to a different language. Cancels any running
-    /// task, disposes of the existing PocketTTS actor, reloads artifacts
-    /// + tokenizer + voices, and resets run-specific stats. Keeps the
-    /// `text` field so the user can quickly re-generate in the new language.
+    // Switch the runtime to a different language. Cancels any running
+    // task, disposes of the existing PocketTTS actor, reloads artifacts
+    // + tokenizer + voices, and resets run-specific stats. Keeps the
+    // `text` field so the user can quickly re-generate in the new language.
     public func switchLanguage(to language: Language) async {
         guard language.id != selectedLanguage.id else { return }
         cancelRunning()
@@ -328,10 +333,10 @@ public final class TTSViewModel {
 
     // MARK: - Public actions
 
-    /// Full-utterance generate. Splits text at sentence boundaries (same
-    /// TextChunker used by stream()) and concatenates the per-chunk PCM.
-    /// This avoids the KV-cache S_cap=256 overflow that hit on long inputs.
-    /// Each chunk gets a fresh VoiceHandle (re-prefills voice KV + text).
+    // Full-utterance generate. Splits text at sentence boundaries (same
+    // TextChunker used by stream()) and concatenates the per-chunk PCM.
+    // This avoids the KV-cache S_cap=256 overflow that hit on long inputs.
+    // Each chunk gets a fresh VoiceHandle (re-prefills voice KV + text).
     public func generate() async {
         guard isReady, !isGenerating, !isStreaming,
             let voice = selectedVoice, let tts = tts,
@@ -432,7 +437,7 @@ public final class TTSViewModel {
         isGenerating = false
     }
 
-    /// Play the most recent `generatedPCM`.
+    // Play the most recent `generatedPCM`.
     public func play() async {
         guard let pcm = generatedPCM, !pcm.isEmpty else { return }
         do {
@@ -477,8 +482,8 @@ public final class TTSViewModel {
         }
     }
 
-    /// Sentence-chunk streaming: split, generate + play chunk-by-chunk with
-    /// at most 2 chunks queued ahead of the player.
+    // Sentence-chunk streaming: split, generate + play chunk-by-chunk with
+    // at most 2 chunks queued ahead of the player.
     public func stream() async {
         guard isReady, !isGenerating, !isStreaming,
             let voice = selectedVoice, let tts = tts,
@@ -539,8 +544,8 @@ public final class TTSViewModel {
         await liveActivity.end()
     }
 
-    /// Stop a running stream. Drains the player to finish any already-
-    /// scheduled chunk, per the task requirements.
+    // Stop a running stream. Drains the player to finish any already-
+    // scheduled chunk, per the task requirements.
     public func stop() {
         cancelRunning()
         player.stopStream()
@@ -680,20 +685,20 @@ public final class TTSViewModel {
 
     // MARK: - Voice handle
 
-    /// Load a fresh VoiceHandle from disk every call. We do NOT cache
-    /// handles: `PocketTTS.generate` mutates the handle's KV cache in
-    /// place (runs runTextPrefill + AR loop directly on the handle's
-    /// buffer), so a cached handle is single-use. The safetensors parse
-    /// takes ~10 ms which is negligible compared to generation time.
+    // Load a fresh VoiceHandle from disk every call. We do NOT cache
+    // handles: `PocketTTS.generate` mutates the handle's KV cache in
+    // place (runs runTextPrefill + AR loop directly on the handle's
+    // buffer), so a cached handle is single-use. The safetensors parse
+    // takes ~10 ms which is negligible compared to generation time.
     private func voiceHandle(
         for entry: VoiceEntry, on tts: PocketTTS
     ) async throws -> VoiceHandle {
         return try await tts.loadVoice(from: entry.url)
     }
 
-    /// Write `generatedPCM` to a WAV file in the user's tmp dir and return
-    /// the URL. Returns nil if there is no audio yet. Used by the Share
-    /// button to hand a URL to UIActivityViewController.
+    // Write `generatedPCM` to a WAV file in the user's tmp dir and return
+    // the URL. Returns nil if there is no audio yet. Used by the Share
+    // button to hand a URL to UIActivityViewController.
     public func exportGeneratedAsWav() -> URL? {
         guard let pcm = generatedPCM, !pcm.isEmpty else { return nil }
         let sr: UInt32 = UInt32(PocketTTSArch.sampleRate)
@@ -752,10 +757,10 @@ public final class TTSViewModel {
 
 // MARK: - Bounded async channel
 
-/// Tiny bounded channel used to back-pressure sentence-chunk generation so
-/// the generator is never more than `capacity` chunks ahead of the player.
-/// Send awaits if full; receive awaits if empty; close wakes pending
-/// receivers with nil.
+// Tiny bounded channel used to back-pressure sentence-chunk generation so
+// the generator is never more than `capacity` chunks ahead of the player.
+// Send awaits if full; receive awaits if empty; close wakes pending
+// receivers with nil.
 actor BoundedChannel<Element: Sendable> {
     private var buffer: [Element] = []
     private let capacity: Int

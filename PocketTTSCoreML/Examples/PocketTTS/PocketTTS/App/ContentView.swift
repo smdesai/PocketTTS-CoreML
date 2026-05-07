@@ -1,10 +1,8 @@
 //
-// ContentView.swift — redesign per mockup:
-//   - large title
-//   - Voice card (compact row with Menu)
-//   - Text card (header + clear button, char count in bottom-right)
-//   - Status card (tinted; Audio-ready stats or streaming/error state)
-//   - Bottom bar: Generate / Stream / Play / Share (all icons + labels)
+//  ContentView.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
 //
 
 import SwiftUI
@@ -297,11 +295,11 @@ struct ContentView: View {
 
     // MARK: - Download progress card
 
-    /// Blue-tinted status card rendered while a language bundle is being
-    /// downloaded from Hugging Face. Shows a determinate progress bar
-    /// once we know the total size, plus a byte counter and the name of
-    /// the currently-downloading file. Falls back to an indeterminate
-    /// spinner if the tree API hasn't yielded sizes yet.
+    // Blue-tinted status card rendered while a language bundle is being
+    // downloaded from Hugging Face. Shows a determinate progress bar
+    // once we know the total size, plus a byte counter and the name of
+    // the currently-downloading file. Falls back to an indeterminate
+    // spinner if the tree API hasn't yielded sizes yet.
     private var downloadCard: some View {
         let progress = viewModel.downloadProgress ?? .zero
         let langName = viewModel.selectedLanguage.displayName
@@ -363,7 +361,7 @@ struct ContentView: View {
         )
     }
 
-    /// "485 MB" / "1.70 GB" — ByteCountFormatter with `.file` style.
+    // "485 MB" / "1.70 GB" — ByteCountFormatter with `.file` style.
     private func formatBytes(_ bytes: Int64) -> String {
         let fmt = ByteCountFormatter()
         fmt.allowedUnits = [.useMB, .useGB]
@@ -537,8 +535,8 @@ struct ContentView: View {
 
 // MARK: - Language picker sheet
 
-/// Sheet with one row per bundled language. Same visual vocabulary as
-/// VoiceListSheet so the picker feels familiar.
+// Sheet with one row per bundled language. Same visual vocabulary as
+// VoiceListSheet so the picker feels familiar.
 private struct LanguageListSheet: View {
     let languages: [Language]
     let selectedID: String
@@ -582,18 +580,18 @@ private struct LanguageListSheet: View {
 
 // MARK: - Voice picker sheet
 
-/// Full-screen sheet with one row per voice. Sheet-based selection is
-/// immune to the hit-test flakiness Menu/Picker can show when they sit
-/// inside a custom card layout with nearby tap gestures.
-///
-/// Top row is "+ Clone new voice" — tapping it presents CloneSheet
-/// modally. On successful clone, the voice list refreshes (bundled +
-/// Documents/ClonedVoices/<lang>/) and the newly-cloned voice is
-/// auto-selected and the sheet dismissed.
-///
-/// Cloned voices (`VoiceEntry.isCloned == true`) are rendered with a
-/// "(cloned)" suffix and support swipe-to-delete. Bundled voices are
-/// read-only and cannot be deleted.
+// Full-screen sheet with one row per voice. Sheet-based selection is
+// immune to the hit-test flakiness Menu/Picker can show when they sit
+// inside a custom card layout with nearby tap gestures.
+//
+// Top row is "+ Clone new voice" — tapping it presents CloneSheet
+// modally. On successful clone, the voice list refreshes (bundled +
+// Documents/ClonedVoices/<lang>/) and the newly-cloned voice is
+// auto-selected and the sheet dismissed.
+//
+// Cloned voices (`VoiceEntry.isCloned == true`) are rendered with a
+// "(cloned)" suffix and support swipe-to-delete. Bundled voices are
+// read-only and cannot be deleted.
 private struct VoiceListSheet: View {
     let viewModel: TTSViewModel
     let onPick: (VoiceEntry) -> Void

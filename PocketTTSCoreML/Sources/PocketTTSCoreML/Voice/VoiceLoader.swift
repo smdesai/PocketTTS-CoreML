@@ -1,41 +1,48 @@
+//
+//  VoiceLoader.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import CoreML
 import Foundation
 
-/// Handle to a loaded voice (KV cache snapshot).
-///
-/// Two handle flavors are supported (auto-detected at load time by
-/// `VoiceLoader.load(url:)`):
-///
-/// - `.prefilled(kv, offset, bosEmb, promptUTF8, noiseSeq)` — the KV cache
-///   already contains the text prefill for a specific prompt. Produced by
-///   `pockettts_coreml.e2e.export_full_prefill`. The orchestrator skips its
-///   prefill step and goes straight to AR generation. Useful as a
-///   voice+prompt cache for apps that ship fixed canned phrases.
-///
-/// - `.voiceOnly(flowKVRank5, voiceOffset, bosEmb)` — the voice KV prefix
-///   pre-packed into the CoreML rank-5 layout, ready to be fed to
-///   `flow_lm_prefill.mlpackage` for in-Swift text prefill. This is the
-///   usual path: ship the raw per-layer voice file (e.g. alba.safetensors
-///   from the kyutai HF repo) and let the runtime handle the rest.
-///   `bosEmb` is optional here — if nil, the orchestrator falls back to
-///   the `flow_lm_bos_emb.safetensors` sidecar it loaded at init.
+// Handle to a loaded voice (KV cache snapshot).
+//
+// Two handle flavors are supported (auto-detected at load time by
+// `VoiceLoader.load(url:)`):
+//
+// - `.prefilled(kv, offset, bosEmb, promptUTF8, noiseSeq)` — the KV cache
+//   already contains the text prefill for a specific prompt. Produced by
+//   `pockettts_coreml.e2e.export_full_prefill`. The orchestrator skips its
+//   prefill step and goes straight to AR generation. Useful as a
+//   voice+prompt cache for apps that ship fixed canned phrases.
+//
+// - `.voiceOnly(flowKVRank5, voiceOffset, bosEmb)` — the voice KV prefix
+//   pre-packed into the CoreML rank-5 layout, ready to be fed to
+//   `flow_lm_prefill.mlpackage` for in-Swift text prefill. This is the
+//   usual path: ship the raw per-layer voice file (e.g. alba.safetensors
+//   from the kyutai HF repo) and let the runtime handle the rest.
+//   `bosEmb` is optional here — if nil, the orchestrator falls back to
+//   the `flow_lm_bos_emb.safetensors` sidecar it loaded at init.
 public struct VoiceHandle: Sendable {
     public enum Kind: Sendable {
-        /// Full voice + text prefill (ready for AR loop).
+        // Full voice + text prefill (ready for AR loop).
         case prefilled(
             flowKVRank5: MLMultiArrayBox,
             flowOffset: Int,
             bosEmb: [Float],
             promptUTF8: Data?,
-            /// Per-AR-step precomputed noise. Shape [MAX_STEPS, 32]. If nil,
-            /// the orchestrator falls back to its own Gaussian sampler (which
-            /// WILL diverge from the Python oracle's RNG).
+            // Per-AR-step precomputed noise. Shape [MAX_STEPS, 32]. If nil,
+            // the orchestrator falls back to its own Gaussian sampler (which
+            // WILL diverge from the Python oracle's RNG).
             noiseSeq: [[Float]]?
         )
-        /// Voice-only prefill — orchestrator runs text prefill in Swift.
-        /// `flowKVRank5` is fp16 [2*L, 1, S_cap, H, D] with the voice KV at
-        /// slots [0, voiceOffset) and zeros elsewhere. `bosEmb` is optional
-        /// (the orchestrator supplies a default from the sidecar if nil).
+        // Voice-only prefill — orchestrator runs text prefill in Swift.
+        // `flowKVRank5` is fp16 [2*L, 1, S_cap, H, D] with the voice KV at
+        // slots [0, voiceOffset) and zeros elsewhere. `bosEmb` is optional
+        // (the orchestrator supplies a default from the sidecar if nil).
         case voiceOnly(
             flowKVRank5: MLMultiArrayBox,
             voiceOffset: Int,
@@ -52,24 +59,24 @@ public struct VoiceHandle: Sendable {
     }
 }
 
-/// Thin reference-semantic wrapper around MLMultiArray so it can live in a
-/// `Sendable` enum case.
+// Thin reference-semantic wrapper around MLMultiArray so it can live in a
+// `Sendable` enum case.
 public final class MLMultiArrayBox: @unchecked Sendable {
     public let array: MLMultiArray
     public init(_ array: MLMultiArray) { self.array = array }
 }
 
-/// Speaker projection weights + optional bos_before_voice vector used by
-/// voice-cloning stage 2. Loaded once at `PocketTTS.init` from the sidecar
-/// `<artifacts>/speaker_proj.safetensors` and handed to `VoiceCloner`.
+// Speaker projection weights + optional bos_before_voice vector used by
+// voice-cloning stage 2. Loaded once at `PocketTTS.init` from the sidecar
+// `<artifacts>/speaker_proj.safetensors` and handed to `VoiceCloner`.
 public struct SpeakerProjection: Sendable {
-    /// Flattened fp32 `[d_model, ldim]` row-major weight matrix (typically
-    /// `[1024, 32]`).
+    // Flattened fp32 `[d_model, ldim]` row-major weight matrix (typically
+    // `[1024, 32]`).
     public let weight: [Float]
-    /// Optional `[1, 1, d_model]` bos_before_voice prefix. Some language
-    /// configs set `insert_bos_before_voice: true` and expect this vector
-    /// to be prepended to the projected voice conditioning before the
-    /// flow_lm prefill pass.
+    // Optional `[1, 1, d_model]` bos_before_voice prefix. Some language
+    // configs set `insert_bos_before_voice: true` and expect this vector
+    // to be prepended to the projected voice conditioning before the
+    // flow_lm prefill pass.
     public let bosBeforeVoice: [Float]?
     public init(weight: [Float], bosBeforeVoice: [Float]?) {
         self.weight = weight
@@ -78,9 +85,9 @@ public struct SpeakerProjection: Sendable {
 }
 
 public enum VoiceLoader {
-    /// Load `speaker_proj.safetensors` from the artifacts bundle. Returns
-    /// `nil` if the file isn't present (voice cloning unavailable for that
-    /// language bundle).
+    // Load `speaker_proj.safetensors` from the artifacts bundle. Returns
+    // `nil` if the file isn't present (voice cloning unavailable for that
+    // language bundle).
     public static func loadSpeakerProjection(from url: URL) throws -> SpeakerProjection? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let reader = try SafetensorsReader(url: url)
@@ -109,9 +116,9 @@ public enum VoiceLoader {
         return SpeakerProjection(weight: weight, bosBeforeVoice: bos)
     }
 
-    /// Load a voice from `.safetensors`. Auto-detects prefilled vs voice-only
-    /// by the presence of `flow_kv_rank5` (prefilled) vs the
-    /// `transformer.layers.<i>.self_attn/cache` layout (voice-only).
+    // Load a voice from `.safetensors`. Auto-detects prefilled vs voice-only
+    // by the presence of `flow_kv_rank5` (prefilled) vs the
+    // `transformer.layers.<i>.self_attn/cache` layout (voice-only).
     public static func load(url: URL) throws -> VoiceHandle {
         let reader = try SafetensorsReader(url: url)
         if reader.tensors["flow_kv_rank5"] != nil {
@@ -291,16 +298,16 @@ public enum VoiceLoader {
         )
     }
 
-    /// Save a voice bundle to `.safetensors`. Supports both flavors:
-    ///
-    /// - `.prefilled`: writes `flow_kv_rank5` + `flow_offset` + `bos_emb`
-    ///   (and optional `prompt_utf8`) — same format as
-    ///   `export_full_prefill.py`.
-    /// - `.voiceOnly`: writes per-layer `transformer.layers.<i>.self_attn/cache`
-    ///   (shape `[2, 1, voiceOffset, H, D]`) + matching `/offset` —
-    ///   same format as the Kyutai HF voice files (e.g. `alba.safetensors`),
-    ///   so a cloned voice can be round-tripped through `loadVoice(url:)`
-    ///   and re-used across sessions without rerunning the mimi encoder.
+    // Save a voice bundle to `.safetensors`. Supports both flavors:
+    //
+    // - `.prefilled`: writes `flow_kv_rank5` + `flow_offset` + `bos_emb`
+    //   (and optional `prompt_utf8`) — same format as
+    //   `export_full_prefill.py`.
+    // - `.voiceOnly`: writes per-layer `transformer.layers.<i>.self_attn/cache`
+    //   (shape `[2, 1, voiceOffset, H, D]`) + matching `/offset` —
+    //   same format as the Kyutai HF voice files (e.g. `alba.safetensors`),
+    //   so a cloned voice can be round-tripped through `loadVoice(url:)`
+    //   and re-used across sessions without rerunning the mimi encoder.
     public static func save(_ handle: VoiceHandle, to url: URL) throws {
         switch handle.kind {
         case .voiceOnly(let kvBox, let voiceOffset, _):
@@ -363,12 +370,12 @@ public enum VoiceLoader {
         try SafetensorsWriter.write(tensors, to: url)
     }
 
-    /// Write a `.voiceOnly` handle's KV cache in the per-layer Kyutai HF
-    /// voice-file layout. Slices first `voiceOffset` slots of each K/V row
-    /// out of the rank-5 buffer and stacks them into `[2, 1, voiceOffset,
-    /// H, D]` fp32 tensors named `transformer.layers.<i>.self_attn/cache`
-    /// (plus a matching `/offset` I64 scalar per layer). The resulting
-    /// file round-trips through `VoiceLoader.loadVoiceOnly(reader:)`.
+    // Write a `.voiceOnly` handle's KV cache in the per-layer Kyutai HF
+    // voice-file layout. Slices first `voiceOffset` slots of each K/V row
+    // out of the rank-5 buffer and stacks them into `[2, 1, voiceOffset,
+    // H, D]` fp32 tensors named `transformer.layers.<i>.self_attn/cache`
+    // (plus a matching `/offset` I64 scalar per layer). The resulting
+    // file round-trips through `VoiceLoader.loadVoiceOnly(reader:)`.
     static func saveVoiceOnly(kv: MLMultiArray, voiceOffset: Int, to url: URL) throws {
         precondition(kv.dataType == .float16, "expected fp16 rank-5 KV buffer")
         precondition(
