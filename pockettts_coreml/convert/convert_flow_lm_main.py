@@ -103,6 +103,7 @@ def convert(
     spot_offset: int = 3,
     language: str = "english",
     palettize_bits: int | None = None,
+    linear_quantize_bits: int | None = None,
 ) -> None:
     # Selective fp32 softmax: default ON. Emits cast-up/softmax/cast-down
     # around the attention reduction so CoreML keeps the softmax at fp32
@@ -194,6 +195,12 @@ def convert(
         precision=precision,
     )
 
+    if palettize_bits is not None and linear_quantize_bits is not None:
+        raise SystemExit(
+            "Cannot set both --palettize-bits and --linear-quantize-bits; "
+            "pick one compression scheme."
+        )
+
     if palettize_bits is not None:
         # Apply weight palettization AFTER the fp32-softmax MIL pass so the
         # compute-precision graph rewrites (keeping softmax/layer_norm at
@@ -209,6 +216,12 @@ def convert(
         # (external research: per-tensor loses too much quality on attention
         # projections; per_grouped_channel w/ group=16 is the standard knob
         # used in CoreML-LLM and MLX conversions for 6-8 bit palettization).
+        #
+        # IMPORTANT: k-means palettization lowers to
+        # `constexpr_lut_to_dense`. ANE has a fast path only at nbits<=4;
+        # at 6/8-bit the LUT op typically falls back to GPU, which defeats
+        # background-audio residency. Use `--linear-quantize-bits 8` for
+        # ANE-resident int8 weights instead.
         from coremltools.optimize.coreml import (
             OpPalettizerConfig,
             OptimizationConfig,
@@ -230,6 +243,39 @@ def convert(
         mlmodel = palettize_weights(mlmodel, opt_config)
         LOGGER.info(
             "flow_lm_main: palettization done in %.1fs; re-saving to %s",
+            _time.time() - _t0, save_path,
+        )
+        mlmodel.save(str(save_path))
+
+    if linear_quantize_bits is not None:
+        # Linear (affine) weight quantization. Lowers to
+        # `constexpr_affine_dequantize`, which ANE has a dequantize unit
+        # for — unlike palettization's LUT op, it runs ANE-resident at
+        # 8-bit. per-channel symmetric matches the CoreML-LLM guide's
+        # recipe for keeping transformer decoders on ANE while still
+        # halving weight size vs fp16. Applied AFTER convert_and_save so
+        # the fp32-softmax/layer_norm casts are preserved.
+        from coremltools.optimize.coreml import (
+            OpLinearQuantizerConfig,
+            OptimizationConfig,
+            linear_quantize_weights,
+        )
+        LOGGER.info(
+            "flow_lm_main: applying %d-bit linear weight quantization "
+            "(linear_symmetric, per_channel) ...",
+            linear_quantize_bits,
+        )
+        import time as _time
+        _t0 = _time.time()
+        op_config = OpLinearQuantizerConfig(
+            mode="linear_symmetric",
+            dtype=f"int{linear_quantize_bits}",
+            granularity="per_channel",
+        )
+        opt_config = OptimizationConfig(global_config=op_config)
+        mlmodel = linear_quantize_weights(mlmodel, opt_config)
+        LOGGER.info(
+            "flow_lm_main: linear quantization done in %.1fs; re-saving to %s",
             _time.time() - _t0, save_path,
         )
         mlmodel.save(str(save_path))
@@ -281,7 +327,17 @@ def main(argv: list[str] | None = None) -> int:
         "--palettize-bits", type=int, default=None,
         help="If set, apply k-means weight palettization at N bits "
              "(typical: 6 or 8) after the fp32-softmax MIL pass. "
+             "Produces constexpr_lut_to_dense weights — only ANE-friendly "
+             "at nbits<=4; 6/8-bit tend to fall back to GPU on iOS. "
              "Default: no palettization (preserves fp16 behavior).",
+    )
+    p.add_argument(
+        "--linear-quantize-bits", type=int, default=None,
+        help="If set, apply linear_symmetric per-channel weight quantization "
+             "at N bits (typical: 8). Produces constexpr_affine_dequantize "
+             "weights which ANE runs natively at int8 — use this for models "
+             "that must stay on ANE (e.g. for background audio). Mutually "
+             "exclusive with --palettize-bits. Default: no quantization.",
     )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
@@ -291,6 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         save_path,
         language=args.language,
         palettize_bits=args.palettize_bits,
+        linear_quantize_bits=args.linear_quantize_bits,
     )
     return 0
 

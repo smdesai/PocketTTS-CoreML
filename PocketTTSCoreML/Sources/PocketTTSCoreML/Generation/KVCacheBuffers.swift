@@ -1,15 +1,22 @@
+//
+//  KVCacheBuffers.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import CoreML
 import Foundation
 
-/// Architecture constants for the PocketTTS CoreML bundle.
-/// Must match `CoreMLGenerator` in `pockettts_coreml/e2e/generator.py`.
-///
-/// NOTE: `flowLayers` is mutable because the 24-layer (`french_24l`) variant
-/// has 24 layers while the 6-layer variants (english, spanish, german,
-/// italian, portuguese) have 6. `PocketTTS.init` calls
-/// `PocketTTSArch.configureFlowLayers(from:)` at model-load time to set
-/// the right value based on the loaded `flow_lm_main` input shape. The
-/// default of 6 is correct for the majority of shipped languages.
+// Architecture constants for the PocketTTS CoreML bundle.
+// Must match `CoreMLGenerator` in `pockettts_coreml/e2e/generator.py`.
+//
+// NOTE: `flowLayers` is mutable because the 24-layer (`french_24l`) variant
+// has 24 layers while the 6-layer variants (english, spanish, german,
+// italian, portuguese) have 6. `PocketTTS.init` calls
+// `PocketTTSArch.configureFlowLayers(from:)` at model-load time to set
+// the right value based on the loaded `flow_lm_main` input shape. The
+// default of 6 is correct for the majority of shipped languages.
 public enum PocketTTSArch {
     // FlowLM main transformer.
     public static let flowSCap: Int = 256
@@ -43,9 +50,9 @@ public enum PocketTTSArch {
     public static let defaultEosThreshold: Float = -4.0
     public static let defaultFramesAfterEos: Int = 2
 
-    /// Resolve `flowLayers` from a loaded flow_lm_main (or flow_lm_prefill)
-    /// MLModel by inspecting the `kv_cache_in` input's expected shape.
-    /// Expected shape is `[2*L, 1, S_cap, H, D]`. Called by `PocketTTS.init`.
+    // Resolve `flowLayers` from a loaded flow_lm_main (or flow_lm_prefill)
+    // MLModel by inspecting the `kv_cache_in` input's expected shape.
+    // Expected shape is `[2*L, 1, S_cap, H, D]`. Called by `PocketTTS.init`.
     public static func configureFlowLayers(from flowMain: MLModel) {
         let desc = flowMain.modelDescription.inputDescriptionsByName
         guard let kv = desc["kv_cache_in"] ?? desc["kv_cache"],
@@ -57,11 +64,11 @@ public enum PocketTTSArch {
     }
 }
 
-/// Pre-allocated MLMultiArray pool for flow_lm_main's KV cache.
-///
-/// The flow_lm_main signature expects `kv_cache_in` at shape
-/// `[12, 1, 256, 16, 64]` (that is `[2*L, B, S_cap, H, D]`, layer `i` occupying
-/// rows `[2i, 2i+2)`).
+// Pre-allocated MLMultiArray pool for flow_lm_main's KV cache.
+//
+// The flow_lm_main signature expects `kv_cache_in` at shape
+// `[12, 1, 256, 16, 64]` (that is `[2*L, B, S_cap, H, D]`, layer `i` occupying
+// rows `[2i, 2i+2)`).
 public final class FlowKVCache: @unchecked Sendable {
     public static let shape: [NSNumber] = [
         NSNumber(value: 2 * PocketTTSArch.flowLayers),  // 12
@@ -96,8 +103,8 @@ public final class FlowKVCache: @unchecked Sendable {
         }
     }
 
-    /// Copy float array into KV rows [2*layer, 2*layer+2) up to `sLen` slots.
-    /// `kForLayer` and `vForLayer` are shape [1, S_actual, H, D] flat arrays.
+    // Copy float array into KV rows [2*layer, 2*layer+2) up to `sLen` slots.
+    // `kForLayer` and `vForLayer` are shape [1, S_actual, H, D] flat arrays.
     public func writeLayer(_ layer: Int, k: [Float], v: [Float], sLen: Int) {
         precondition(layer >= 0 && layer < PocketTTSArch.flowLayers, "layer out of range")
         precondition(sLen >= 0 && sLen <= PocketTTSArch.flowSCap, "sLen out of range")
@@ -153,7 +160,7 @@ public final class FlowKVCache: @unchecked Sendable {
         }
     }
 
-    /// Copy from another MLMultiArray in-place (shapes must match).
+    // Copy from another MLMultiArray in-place (shapes must match).
     public func copy(from other: MLMultiArray) {
         precondition(other.count == array.count, "shape mismatch")
         precondition(other.dataType == array.dataType, "dtype mismatch")

@@ -1,5 +1,10 @@
 //
-// VoiceCatalog.swift
+//  VoiceCatalog.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Enumerates voice .safetensors files downloaded from the Hugging Face
 // bundle (`smdesai/pocket-tts-coreml`) into Application Support, AND any
@@ -24,36 +29,36 @@
 import Foundation
 
 public struct VoiceEntry: Identifiable, Hashable, Sendable {
-    /// Filename stem (e.g. "bill_boerst").
+    // Filename stem (e.g. "bill_boerst").
     public let id: String
-    /// Human-readable title-cased name (e.g. "Bill Boerst").
+    // Human-readable title-cased name (e.g. "Bill Boerst").
     public let displayName: String
-    /// Absolute URL inside the app bundle or Documents dir.
+    // Absolute URL inside the app bundle or Documents dir.
     public let url: URL
-    /// Language code ("en", "es", "de", "it", "pt", "fr"). Empty for the
-    /// legacy single-language bundle.
+    // Language code ("en", "es", "de", "it", "pt", "fr"). Empty for the
+    // legacy single-language bundle.
     public let language: String
-    /// True for user-cloned voices stored under Documents/ClonedVoices/.
-    /// Bundled voices set this to false. Cloned voices are rendered with
-    /// a "(cloned)" suffix + custom icon in VoiceListSheet and can be
-    /// deleted via swipe-to-delete.
+    // True for user-cloned voices stored under Documents/ClonedVoices/.
+    // Bundled voices set this to false. Cloned voices are rendered with
+    // a "(cloned)" suffix + custom icon in VoiceListSheet and can be
+    // deleted via swipe-to-delete.
     public let isCloned: Bool
 }
 
 public enum VoiceCatalog {
 
-    /// Combined list of downloaded + cloned voices for the given language,
-    /// sorted alphabetically by displayName. Cloned voices appear inline
-    /// with the downloaded ones; use `VoiceEntry.isCloned` to distinguish.
+    // Combined list of downloaded + cloned voices for the given language,
+    // sorted alphabetically by displayName. Cloned voices appear inline
+    // with the downloaded ones; use `VoiceEntry.isCloned` to distinguish.
     public static func all(for language: Language) -> [VoiceEntry] {
         let downloaded = self.downloaded(for: language)
         let cloned = self.cloned(for: language.id)
         return (downloaded + cloned).sorted { $0.displayName < $1.displayName }
     }
 
-    /// Return `.safetensors` voices previously downloaded to
-    /// `Application Support/pocket-tts-coreml/<configName>/voices/`. Empty
-    /// when the language bundle hasn't been installed yet.
+    // Return `.safetensors` voices previously downloaded to
+    // `Application Support/pocket-tts-coreml/<configName>/voices/`. Empty
+    // when the language bundle hasn't been installed yet.
     public static func downloaded(for language: Language) -> [VoiceEntry] {
         let voicesDir = ModelDownloader.languageDirectory(configName: language.configName)
             .appendingPathComponent("voices", isDirectory: true)
@@ -61,9 +66,9 @@ public enum VoiceCatalog {
         return scanVoices(at: voicesDir, language: language.id, isCloned: false)
     }
 
-    /// Return user-cloned voices saved under
-    /// `Documents/ClonedVoices/<languageID>/*.safetensors`. Empty if the
-    /// user hasn't cloned anything for this language yet.
+    // Return user-cloned voices saved under
+    // `Documents/ClonedVoices/<languageID>/*.safetensors`. Empty if the
+    // user hasn't cloned anything for this language yet.
     public static func cloned(for languageID: String) -> [VoiceEntry] {
         let dir = clonedVoicesDir(for: languageID)
         let fm = FileManager.default
@@ -73,9 +78,9 @@ public enum VoiceCatalog {
 
     // MARK: - Cloned voice persistence
 
-    /// Writable directory where cloned voices for `language` are stored.
-    /// Always creates the directory on demand — callers don't need to
-    /// guard against it being missing.
+    // Writable directory where cloned voices for `language` are stored.
+    // Always creates the directory on demand — callers don't need to
+    // guard against it being missing.
     public static func clonedVoicesDir(for language: String) -> URL {
         let fm = FileManager.default
         let docs =
@@ -91,10 +96,10 @@ public enum VoiceCatalog {
         return dir
     }
 
-    /// Build the destination URL for a named clone in the given language.
-    /// Name is sanitized to alphanumerics + underscore; empty names fall
-    /// back to a timestamp. Does NOT check for collisions — caller is
-    /// expected to add a "(2)"-style disambiguator if they want one.
+    // Build the destination URL for a named clone in the given language.
+    // Name is sanitized to alphanumerics + underscore; empty names fall
+    // back to a timestamp. Does NOT check for collisions — caller is
+    // expected to add a "(2)"-style disambiguator if they want one.
     public static func clonedVoiceURL(language: String, rawName: String) -> URL {
         let sanitized = sanitizeName(rawName)
         let stem = sanitized.isEmpty ? "clone_\(Int(Date().timeIntervalSince1970))" : sanitized
@@ -102,10 +107,10 @@ public enum VoiceCatalog {
             .appendingPathComponent("\(stem).safetensors")
     }
 
-    /// Delete a cloned voice from disk. Returns true if removed. Throws
-    /// an error if the entry is bundled (callers should guard but this is
-    /// a belt-and-braces safety check against accidental deletion of
-    /// read-only bundle content).
+    // Delete a cloned voice from disk. Returns true if removed. Throws
+    // an error if the entry is bundled (callers should guard but this is
+    // a belt-and-braces safety check against accidental deletion of
+    // read-only bundle content).
     public static func deleteCloned(_ entry: VoiceEntry) throws {
         guard entry.isCloned else {
             throw NSError(
@@ -117,12 +122,12 @@ public enum VoiceCatalog {
         try FileManager.default.removeItem(at: entry.url)
     }
 
-    /// Check whether voice cloning is available for `language`. Cloning
-    /// requires `speaker_proj.safetensors` to be present in the downloaded
-    /// language bundle (optional sidecar emitted by
-    /// `pockettts_coreml.convert.export_speaker_proj`). Returns false if
-    /// the bundle hasn't been downloaded yet OR if the sidecar is missing
-    /// from the installed bundle.
+    // Check whether voice cloning is available for `language`. Cloning
+    // requires `speaker_proj.safetensors` to be present in the downloaded
+    // language bundle (optional sidecar emitted by
+    // `pockettts_coreml.convert.export_speaker_proj`). Returns false if
+    // the bundle hasn't been downloaded yet OR if the sidecar is missing
+    // from the installed bundle.
     public static func cloningAvailable(for language: Language) -> Bool {
         let proj = ModelDownloader.languageDirectory(configName: language.configName)
             .appendingPathComponent("speaker_proj.safetensors")
@@ -166,7 +171,7 @@ public enum VoiceCatalog {
         return entries
     }
 
-    /// "peter_yearsley" -> "Peter Yearsley", "alba" -> "Alba".
+    // "peter_yearsley" -> "Peter Yearsley", "alba" -> "Alba".
     static func titleCase(_ stem: String) -> String {
         stem.split(separator: "_")
             .map { part -> String in
@@ -180,26 +185,26 @@ public enum VoiceCatalog {
 
 // MARK: - Language model
 
-/// Tiny value type describing a demo-app language. Not a `Locale` because
-/// the language id here is the folder name on disk under `Resources/Languages/`,
-/// which is a project-internal convention (matches the reference config file
-/// names: `english`, `spanish`) rather than a standard locale code.
+// Tiny value type describing a demo-app language. Not a `Locale` because
+// the language id here is the folder name on disk under `Resources/Languages/`,
+// which is a project-internal convention (matches the reference config file
+// names: `english`, `spanish`) rather than a standard locale code.
 public struct Language: Identifiable, Hashable, Sendable {
-    /// Folder id ("en", "es", "de", "it", "pt", "fr"). Used as the
-    /// `Resources/Languages/<id>/` path.
+    // Folder id ("en", "es", "de", "it", "pt", "fr"). Used as the
+    // `Resources/Languages/<id>/` path.
     public let id: String
-    /// Reference config name used by conversion scripts ("english",
-    /// "spanish", "german", "italian", "portuguese", "french_24l").
-    /// Note: French only ships as the 24-layer variant (`french_24l`);
-    /// there is no 6-layer French config.
+    // Reference config name used by conversion scripts ("english",
+    // "spanish", "german", "italian", "portuguese", "french_24l").
+    // Note: French only ships as the 24-layer variant (`french_24l`);
+    // there is no 6-layer French config.
     public let configName: String
-    /// Human-readable display name ("English", "Spanish", "German",
-    /// "Italian", "Portuguese", "French").
+    // Human-readable display name ("English", "Spanish", "German",
+    // "Italian", "Portuguese", "French").
     public let displayName: String
-    /// Default demo paragraph in this language. Used as initial text at
-    /// launch and when the user switches languages (only overwrites the
-    /// editor if the current text matches a known default, so custom user
-    /// input is preserved).
+    // Default demo paragraph in this language. Used as initial text at
+    // launch and when the user switches languages (only overwrites the
+    // editor if the current text matches a known default, so custom user
+    // input is preserved).
     public let defaultPrompt: String
 
     public init(
@@ -211,7 +216,7 @@ public struct Language: Identifiable, Hashable, Sendable {
         self.defaultPrompt = defaultPrompt
     }
 
-    /// All shipped languages. Order is the picker order.
+    // All shipped languages. Order is the picker order.
     public static let all: [Language] = [
         Language(
             id: "en", configName: "english", displayName: "English",
@@ -261,34 +266,20 @@ public struct Language: Identifiable, Hashable, Sendable {
                 Appuyez sur Stream pour l'entendre diviser un long paragraphe en phrases.
                 """
         ),
-        // 8-bit palettized variant of the 24-layer French model. Same
-        // graph, same voices, ~600 MB smaller bundle (~1.1 GB on-disk vs
-        // ~1.7 GB for the fp16 French entry). Quality per verify_french
-        // is on par with or slightly better than fp16. Shipped as a
-        // separate picker entry so users can A/B-test the two variants
-        // without re-downloading.
-        Language(
-            id: "fr8", configName: "french_24l_palette8", displayName: "French (8-bit)",
-            defaultPrompt: """
-                Pocket TTS est un modèle léger de synthèse vocale. \
-                Il fonctionne entièrement sur votre iPhone, diffusant l'audio pendant que la voix parle. \
-                Appuyez sur Stream pour l'entendre diviser un long paragraphe en phrases.
-                """
-        ),
     ]
 
-    /// The set of texts that count as "default demo prompts" — used to
-    /// decide whether switching languages should overwrite the editor.
+    // The set of texts that count as "default demo prompts" — used to
+    // decide whether switching languages should overwrite the editor.
     public static var allDefaultPrompts: Set<String> {
         Set(all.map(\.defaultPrompt))
     }
 
-    /// Convenience: the first language in the static list. Used as the
-    /// initial selection when the app boots. Unlike the old bundled-first
-    /// behaviour, we can't probe what's "installed" up-front without
-    /// taking on a disk scan at launch — since every language requires a
-    /// download on first use, defaulting to the first entry is fine and
-    /// keeps the picker order deterministic.
+    // Convenience: the first language in the static list. Used as the
+    // initial selection when the app boots. Unlike the old bundled-first
+    // behaviour, we can't probe what's "installed" up-front without
+    // taking on a disk scan at launch — since every language requires a
+    // download on first use, defaulting to the first entry is fine and
+    // keeps the picker order deterministic.
     public static var defaultBundled: Language {
         return all[0]
     }
