@@ -26,32 +26,12 @@ let package = Package(
             name: "SentencePiece",
             path: "Frameworks/SentencePiece.xcframework"
         ),
-        // Thin C bridge exposing the SentencePiece C++ API via extern "C".
-        .target(
-            name: "CSentencePieceBridge",
-            dependencies: ["SentencePiece"],
-            path: "Sources/PocketTTSCoreML/CSentencePieceBridge",
-            publicHeadersPath: "include",
-            cxxSettings: [
-                .headerSearchPath(
-                    "../../../Frameworks/SentencePiece.xcframework/macos-arm64_x86_64/SentencePiece.framework/Headers"
-                ),
-                .define("SENTENCEPIECE_STATIC", to: "1"),
-            ],
-            linkerSettings: [
-                .linkedLibrary("c++")
-            ]
-        ),
         .target(
             name: "PocketTTSCoreML",
             dependencies: [
-                "CSentencePieceBridge",
                 "SentencePiece",
             ],
             path: "Sources/PocketTTSCoreML",
-            exclude: [
-                "CSentencePieceBridge"
-            ],
             resources: [
                 // No bundled resources by default; caller passes URLs.
             ],

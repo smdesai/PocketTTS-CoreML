@@ -4,6 +4,6 @@ framework module SentencePiece {
     export *
     module * { export * }
     
-    link "sentencepiece"
     link "c++"
+    link framework "CoreFoundation"
 }

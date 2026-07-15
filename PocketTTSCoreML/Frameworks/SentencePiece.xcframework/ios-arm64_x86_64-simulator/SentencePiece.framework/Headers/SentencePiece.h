@@ -6,7 +6,6 @@
 #ifndef SENTENCEPIECE_H
 #define SENTENCEPIECE_H
 
-#include <sentencepiece_processor.h>
-#include <sentencepiece_trainer.h>
+#include "SentencePieceBridge.h"
 
 #endif /* SENTENCEPIECE_H */
