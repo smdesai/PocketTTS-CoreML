@@ -25,12 +25,31 @@ Python helper required for generation. iOS 18+ is declared in
 
 ## Build
 
-From inside this directory:
+`Package.swift` lives at the **repository root** (SwiftPM requires that for git
+dependencies), so run SwiftPM commands from the repo root, not from this directory:
 
 ```bash
+cd ..                      # repository root
 swift build                # debug
 swift build -c release     # release
-swift test                 # runs all tests; uses fixtures under ../pockettts_coreml/oracle/fixtures/
+swift test                 # runs all tests; uses fixtures under pockettts_coreml/oracle/fixtures/
+```
+
+## Use as a dependency
+
+```swift
+.package(url: "https://github.com/smdesai/PocketTTS-CoreML", from: "1.0.0")
+// then in a target:
+.product(name: "PocketTTSCoreML", package: "PocketTTS-CoreML")
+```
+
+In an XcodeGen `project.yml`:
+
+```yaml
+packages:
+  PocketTTSCoreML:
+    url: https://github.com/smdesai/PocketTTS-CoreML
+    majorVersion: 1.0.0
 ```
 
 ## Public API
@@ -141,7 +160,7 @@ Covered:
 | `Float16Ops.swift`           | vImage-backed fp32↔fp16 bulk conversion |
 | `AudioStream.swift`          | fp32 → int16 PCM via `vDSP_vfixr16` + minimal WAV writer |
 | `SafetensorsReader.swift`    | minimal reader + writer (no external dependency) |
-| `CSentencePieceBridge/`      | extern-C bridge over `sentencepiece::SentencePieceProcessor` |
+| `Frameworks/SentencePiece.xcframework` | prebuilt SentencePiece with an extern-C `sentencepiece_*` API (`SentencePieceBridge.h`) |
 
 ## Data types at a glance
 

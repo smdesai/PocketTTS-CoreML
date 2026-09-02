@@ -5,7 +5,7 @@
 //  Created by Sachin Desai on 5/3/26.
 //
 
-import CSentencePieceBridge
+import SentencePiece
 import Foundation
 
 // Errors surfaced by `Tokenizer`.
