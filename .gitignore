@@ -38,7 +38,7 @@ pockettts_coreml/oracle/fixtures/english_alba_seed42/metadata.json
 tests/_scratch*.py
 
 # SwiftPM build products
-PocketTTSCoreML/.build/
+.build/
 PocketTTSCoreML/.swiftpm/
 
 # iOS bundled artifacts: regenerate locally from /Artifacts/en_fp16_mlmodelc.

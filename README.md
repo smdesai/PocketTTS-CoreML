@@ -147,10 +147,9 @@ you specifically need the footprint reduction.
 
 ## Swift Runtime
 
-Build the Swift package:
+Build the Swift package (the manifest is at the repository root):
 
 ```bash
-cd PocketTTSCoreML
 swift build
 swift test
 ```
@@ -287,10 +286,9 @@ Run Python tests:
 POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/
 ```
 
-Run Swift tests:
+Run Swift tests (from the repository root):
 
 ```bash
-cd PocketTTSCoreML
 swift test
 ```
 
@@ -321,7 +319,8 @@ pockettts_coreml/reference/         Kyutai reference subtree
 pockettts_coreml/patches/           trace-friendly PyTorch patches
 pockettts_coreml/convert/           conversion scripts
 pockettts_coreml/oracle/            golden fixture tooling
-PocketTTSCoreML/                    Swift package and CLI
+Package.swift                       SwiftPM manifest (root, so the repo is consumable by URL)
+PocketTTSCoreML/                    Swift package sources, tests, CLI and SentencePiece.xcframework
 PocketTTSCoreML/Examples/           demo and benchmark app projects
 docs/                               design notes and investigations
 tests/                              Python parity tests

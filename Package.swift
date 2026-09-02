@@ -1,9 +1,10 @@
 // swift-tools-version:6.0
 import PackageDescription
 
-// PocketTTSCoreML — Phase 4A target (macOS-only).
-// iOS support is explicitly listed in platforms so Phase 4B can enable it
-// without restructuring the manifest.
+// PocketTTSCoreML Swift package.
+// The manifest lives at the repository root so the package can be consumed as a
+// git dependency (SwiftPM requires a root Package.swift); the Swift sources,
+// tests and binary framework stay under PocketTTSCoreML/.
 let package = Package(
     name: "PocketTTSCoreML",
     platforms: [
@@ -24,14 +25,14 @@ let package = Package(
         // SentencePiece C++ library slices packaged as a binary xcframework.
         .binaryTarget(
             name: "SentencePiece",
-            path: "Frameworks/SentencePiece.xcframework"
+            path: "PocketTTSCoreML/Frameworks/SentencePiece.xcframework"
         ),
         .target(
             name: "PocketTTSCoreML",
             dependencies: [
                 "SentencePiece",
             ],
-            path: "Sources/PocketTTSCoreML",
+            path: "PocketTTSCoreML/Sources/PocketTTSCoreML",
             resources: [
                 // No bundled resources by default; caller passes URLs.
             ],
@@ -45,12 +46,12 @@ let package = Package(
         .executableTarget(
             name: "PocketTTSCLI",
             dependencies: ["PocketTTSCoreML"],
-            path: "Sources/PocketTTSCLI"
+            path: "PocketTTSCoreML/Sources/PocketTTSCLI"
         ),
         .testTarget(
             name: "PocketTTSCoreMLTests",
             dependencies: ["PocketTTSCoreML"],
-            path: "Tests/PocketTTSCoreMLTests",
+            path: "PocketTTSCoreML/Tests/PocketTTSCoreMLTests",
             exclude: ["Fixtures/README.md"]
         ),
     ],

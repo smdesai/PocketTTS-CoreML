@@ -221,7 +221,7 @@ the HF repo id and layout.
 POCKETTTS_ORACLE_READY=1 .venv/bin/python -m pytest tests/
 
 # Swift package tests (Mac)
-cd PocketTTSCoreML && swift test
+swift test   # from the repository root
 ```
 
 ---

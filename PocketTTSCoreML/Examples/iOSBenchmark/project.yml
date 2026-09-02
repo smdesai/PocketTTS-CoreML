@@ -18,7 +18,7 @@ settings:
 packages:
   PocketTTSCoreML:
     # Consume the SwiftPM package two levels up.
-    path: ../..
+    path: ../../..
 
 targets:
   iOSBenchmark:
