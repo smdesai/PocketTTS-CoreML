@@ -1,12 +1,19 @@
+//
+//  SafetensorsReader.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Foundation
 
-/// Minimal safetensors reader.
-///
-/// Safetensors file layout:
-///   | 8-byte little-endian uint64 header_size | JSON header | binary tensor blob |
-///
-/// Header JSON is a dict: `{name: {dtype, shape, data_offsets: [start, end]}}` plus
-/// an optional `__metadata__` entry. Offsets are relative to the start of the blob.
+// Minimal safetensors reader.
+//
+// Safetensors file layout:
+//   | 8-byte little-endian uint64 header_size | JSON header | binary tensor blob |
+//
+// Header JSON is a dict: `{name: {dtype, shape, data_offsets: [start, end]}}` plus
+// an optional `__metadata__` entry. Offsets are relative to the start of the blob.
 public enum SafetensorsError: Error, CustomStringConvertible {
     case fileTooSmall
     case badHeader
@@ -59,7 +66,7 @@ public struct SafetensorsTensorInfo: Sendable {
     public var elementCount: Int { shape.reduce(1, *) }
 }
 
-/// Reader that mmaps the file and indexes the JSON header.
+// Reader that mmaps the file and indexes the JSON header.
 public final class SafetensorsReader: @unchecked Sendable {
     private let data: Data
     public let tensors: [String: SafetensorsTensorInfo]
@@ -144,7 +151,7 @@ public final class SafetensorsReader: @unchecked Sendable {
         }
     }
 
-    /// Raw bytes for tensor `name`. Zero-copy — backed by the same mmap.
+    // Raw bytes for tensor `name`. Zero-copy — backed by the same mmap.
     public func bytes(for name: String) throws -> Data {
         guard let info = tensors[name] else {
             throw SafetensorsError.missingKey(name)
@@ -152,7 +159,7 @@ public final class SafetensorsReader: @unchecked Sendable {
         return data.subdata(in: info.byteOffset ..< (info.byteOffset + info.byteLength))
     }
 
-    /// Load as `[Float]` (fp32). Converts F16/BF16/F32 transparently.
+    // Load as `[Float]` (fp32). Converts F16/BF16/F32 transparently.
     public func float32Array(for name: String) throws -> (values: [Float], shape: [Int]) {
         guard let info = tensors[name] else { throw SafetensorsError.missingKey(name) }
         let count = info.elementCount
@@ -182,7 +189,7 @@ public final class SafetensorsReader: @unchecked Sendable {
         return (out, info.shape)
     }
 
-    /// Load as `[Int64]`. Accepts I64 or I32.
+    // Load as `[Int64]`. Accepts I64 or I32.
     public func int64Array(for name: String) throws -> (values: [Int64], shape: [Int]) {
         guard let info = tensors[name] else { throw SafetensorsError.missingKey(name) }
         let count = info.elementCount
@@ -220,7 +227,7 @@ public final class SafetensorsReader: @unchecked Sendable {
         return result.overflow ? nil : result.partialValue
     }
 
-    /// Convert an IEEE 754 half-precision (fp16) bit pattern to Float.
+    // Convert an IEEE 754 half-precision (fp16) bit pattern to Float.
     @inline(__always)
     static func fp16ToFloat(_ h: UInt16) -> Float {
         // Portable software fp16 -> fp32 conversion.
@@ -254,7 +261,7 @@ public final class SafetensorsReader: @unchecked Sendable {
 
 // MARK: - Writer
 
-/// Minimal safetensors writer (F32 tensors only — enough for voice export).
+// Minimal safetensors writer (F32 tensors only — enough for voice export).
 public enum SafetensorsWriter {
     public struct Tensor {
         public let name: String

@@ -1,10 +1,17 @@
+//
+//  TextChunker.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Foundation
 
-/// Port of `pocket_tts.models.tts_model.split_into_best_sentences` — splits
-/// long text into chunks ≤ `maxTokens` by walking end-of-sentence punctuation,
-/// falling back to comma/colon if any single sentence is too long.
-///
-/// The default `maxTokens = 50` matches the reference's MAX_TOKEN_PER_CHUNK.
+// Port of `pocket_tts.models.tts_model.split_into_best_sentences` — splits
+// long text into chunks ≤ `maxTokens` by walking end-of-sentence punctuation,
+// falling back to comma/colon if any single sentence is too long.
+//
+// The default `maxTokens = 50` matches the reference's MAX_TOKEN_PER_CHUNK.
 public enum TextChunker {
     public static let defaultMaxTokens: Int = 50
 
@@ -13,7 +20,7 @@ public enum TextChunker {
         public let framesAfterEosGuess: Int
     }
 
-    /// Mirrors `prepare_text_prompt` — normalization + punctuation coercion.
+    // Mirrors `prepare_text_prompt` — normalization + punctuation coercion.
     public static func prepareTextPrompt(
         _ input: String,
         padWithSpacesForShortInputs: Bool = true,
@@ -50,7 +57,7 @@ public enum TextChunker {
         return Preparation(text: text, framesAfterEosGuess: framesAfterEosGuess)
     }
 
-    /// Port of `split_into_best_sentences`.
+    // Port of `split_into_best_sentences`.
     public static func splitIntoBestSentences(
         _ text: String,
         tokenizer: Tokenizer,

@@ -1,7 +1,14 @@
-import SentencePiece
+//
+//  Tokenizer.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
+import CSentencePieceBridge
 import Foundation
 
-/// Errors surfaced by `Tokenizer`.
+// Errors surfaced by `Tokenizer`.
 public enum TokenizerError: Error, CustomStringConvertible {
     case modelLoadFailed(path: String)
     case encodeFailed
@@ -16,11 +23,11 @@ public enum TokenizerError: Error, CustomStringConvertible {
     }
 }
 
-/// Minimal Swift wrapper over the SentencePiece C++ processor.
-///
-/// Must produce identical int32 IDs to Python's
-/// `sentencepiece.SentencePieceProcessor.EncodeAsIds(text)` — this is the
-/// tokenizer parity contract (see `TokenizerParityTests`).
+// Minimal Swift wrapper over the SentencePiece C++ processor.
+//
+// Must produce identical int32 IDs to Python's
+// `sentencepiece.SentencePieceProcessor.EncodeAsIds(text)` — this is the
+// tokenizer parity contract (see `TokenizerParityTests`).
 public final class Tokenizer: @unchecked Sendable {
     private let proc: SentencePieceProcessor
 
@@ -39,7 +46,7 @@ public final class Tokenizer: @unchecked Sendable {
         sentencepiece_destroy(proc)
     }
 
-    /// Encode `text` to int32 token IDs.
+    // Encode `text` to int32 token IDs.
     public func encode(_ text: String) -> [Int32] {
         var idsPtr: UnsafeMutablePointer<Int32>? = nil
         let n = withUnsafeMutablePointer(to: &idsPtr) { outer -> Int32 in
@@ -52,7 +59,7 @@ public final class Tokenizer: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: ids, count: Int(n)))
     }
 
-    /// Encode and return as `[Int]` for convenience.
+    // Encode and return as `[Int]` for convenience.
     public func encodeAsInt(_ text: String) -> [Int] {
         encode(text).map { Int($0) }
     }

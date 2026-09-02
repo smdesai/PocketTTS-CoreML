@@ -1,11 +1,18 @@
+//
+//  NoiseSource.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Foundation
 
-/// Deterministic Gaussian noise source with a minimal Xorshift backing for
-/// testable reproducibility. The reference uses PyTorch's Mersenne Twister
-/// with `torch.nn.init.normal_`; here we expose a seedable API but don't
-/// aim for torch-identical sequences — we only need deterministic
-/// Swift-side repro. For parity vs the Python reference, the Python side's
-/// noise samples can be precomputed and injected via `setPrecomputed`.
+// Deterministic Gaussian noise source with a minimal Xorshift backing for
+// testable reproducibility. The reference uses PyTorch's Mersenne Twister
+// with `torch.nn.init.normal_`; here we expose a seedable API but don't
+// aim for torch-identical sequences — we only need deterministic
+// Swift-side repro. For parity vs the Python reference, the Python side's
+// noise samples can be precomputed and injected via `setPrecomputed`.
 public final class NoiseSource: @unchecked Sendable {
     private var state0: UInt64
     private var state1: UInt64
@@ -26,7 +33,7 @@ public final class NoiseSource: @unchecked Sendable {
         self.pcIndex = 0
     }
 
-    /// Draw `count` samples from N(0, std^2).
+    // Draw `count` samples from N(0, std^2).
     public func sample(count: Int) -> [Float] {
         var out = [Float](repeating: 0, count: count)
         fillSample(&out, count: count)

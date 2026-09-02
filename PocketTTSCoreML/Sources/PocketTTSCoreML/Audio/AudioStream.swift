@@ -1,10 +1,17 @@
+//
+//  AudioStream.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Accelerate
 import CoreML
 import Foundation
 
-/// Audio frame helpers — Float32 samples to/from int16 PCM (little-endian).
+// Audio frame helpers — Float32 samples to/from int16 PCM (little-endian).
 public enum AudioStream {
-    /// Convert `fp32[1, 1, 1920]` MLMultiArray to `Data` (int16 LE PCM).
+    // Convert `fp32[1, 1, 1920]` MLMultiArray to `Data` (int16 LE PCM).
     public static func frameToPCM16(_ array: MLMultiArray, clip: Bool = true) -> Data {
         let n = array.count
         var floats = [Float](repeating: 0, count: n)
@@ -12,7 +19,7 @@ public enum AudioStream {
         return frameToPCM16(array, clip: clip, floats: &floats, int16s: &int16s)
     }
 
-    /// Convert using caller-owned scratch buffers to avoid per-frame heap churn.
+    // Convert using caller-owned scratch buffers to avoid per-frame heap churn.
     public static func frameToPCM16(
         _ array: MLMultiArray,
         clip: Bool = true,
@@ -42,7 +49,7 @@ public enum AudioStream {
         }
     }
 
-    /// Write a 24 kHz mono WAV file from in-memory int16 PCM.
+    // Write a 24 kHz mono WAV file from in-memory int16 PCM.
     public static func writeWAV(
         _ pcm: Data, sampleRate: Int = PocketTTSArch.sampleRate,
         to url: URL
@@ -69,7 +76,7 @@ public enum AudioStream {
         try out.write(to: url, options: .atomic)
     }
 
-    /// Convenience: read a 24 kHz mono WAV back into `[Float]` samples.
+    // Convenience: read a 24 kHz mono WAV back into `[Float]` samples.
     public static func readWAVAsFloat(_ url: URL) throws -> (samples: [Float], sampleRate: Int) {
         let data = try Data(contentsOf: url)
         // Minimal RIFF reader — assumes well-formed 16-bit mono file.

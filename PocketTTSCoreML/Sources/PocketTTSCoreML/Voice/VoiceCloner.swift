@@ -1,34 +1,41 @@
+//
+//  VoiceCloner.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 @preconcurrency import AVFoundation
 import Accelerate
 import CoreML
 import Foundation
 
-/// Two-stage voice cloning pipeline driven entirely in Swift.
-///
-/// Stage 1: `mimi_encoder.mlpackage` runs on a 4-second reference waveform
-/// (resampled/padded/cropped to exactly 96 000 samples @ 24 kHz) to produce
-/// Mimi latents of shape `fp16[1, 32, T_latent]` (T_latent = 50 for 4 s).
-///
-/// Stage 2: latents are projected to `d_model` (1024) via the learned
-/// `speaker_proj_weight` linear (loaded from `speaker_proj.safetensors`),
-/// optionally prepended with the `bos_before_voice` vector, and fed to
-/// `flow_lm_prefill.mlpackage` to populate the voice KV cache at slots
-/// `[0, T_voice)`. The returned `VoiceHandle.voiceOnly` can then be passed
-/// directly to `PocketTTS.generate(...)`.
-///
-/// This mirrors the reference Python pipeline — see `TTSModel._encode_audio`
-/// + `TTSModel.get_state_for_audio_prompt` in
-/// `pockettts_coreml/reference/pocket_tts/models/tts_model.py`.
+// Two-stage voice cloning pipeline driven entirely in Swift.
+//
+// Stage 1: `mimi_encoder.mlpackage` runs on a 4-second reference waveform
+// (resampled/padded/cropped to exactly 96 000 samples @ 24 kHz) to produce
+// Mimi latents of shape `fp16[1, 32, T_latent]` (T_latent = 50 for 4 s).
+//
+// Stage 2: latents are projected to `d_model` (1024) via the learned
+// `speaker_proj_weight` linear (loaded from `speaker_proj.safetensors`),
+// optionally prepended with the `bos_before_voice` vector, and fed to
+// `flow_lm_prefill.mlpackage` to populate the voice KV cache at slots
+// `[0, T_voice)`. The returned `VoiceHandle.voiceOnly` can then be passed
+// directly to `PocketTTS.generate(...)`.
+//
+// This mirrors the reference Python pipeline — see `TTSModel._encode_audio`
+// + `TTSModel.get_state_for_audio_prompt` in
+// `pockettts_coreml/reference/pocket_tts/models/tts_model.py`.
 public final class VoiceCloner: @unchecked Sendable {
     public let encoder: MLModel
     public let orchestrator: Orchestrator
     public let speakerProj: SpeakerProjection
 
-    /// Preferred initializer: reuses a pre-loaded mimi_encoder MLModel so
-    /// repeat clones in the same session don't pay the ~2-3s instance-
-    /// init + ANE program hand-off cost. `PocketTTS.init` loads the
-    /// encoder once and caches a VoiceCloner on the actor for all
-    /// subsequent clone calls.
+    // Preferred initializer: reuses a pre-loaded mimi_encoder MLModel so
+    // repeat clones in the same session don't pay the ~2-3s instance-
+    // init + ANE program hand-off cost. `PocketTTS.init` loads the
+    // encoder once and caches a VoiceCloner on the actor for all
+    // subsequent clone calls.
     public init(
         encoder: MLModel,
         orchestrator: Orchestrator,
@@ -39,9 +46,9 @@ public final class VoiceCloner: @unchecked Sendable {
         self.speakerProj = speakerProjection
     }
 
-    /// Legacy path: constructs its own encoder from a URL. Each call to
-    /// this initializer pays MLModel load + ANE program init cost, so
-    /// prefer the encoder-passed form above for per-clone reuse.
+    // Legacy path: constructs its own encoder from a URL. Each call to
+    // this initializer pays MLModel load + ANE program init cost, so
+    // prefer the encoder-passed form above for per-clone reuse.
     public init(
         mimiEncoderURL: URL,
         orchestrator: Orchestrator,
@@ -69,8 +76,8 @@ public final class VoiceCloner: @unchecked Sendable {
         }
     }
 
-    /// Run the full two-stage clone on a reference waveform and return a
-    /// `.voiceOnly` VoiceHandle with the voice KV populated.
+    // Run the full two-stage clone on a reference waveform and return a
+    // `.voiceOnly` VoiceHandle with the voice KV populated.
     public func clone(from audioURL: URL) async throws -> VoiceHandle {
         let t0 = Date()
         func log(_ phase: String, _ startedAt: Date) {

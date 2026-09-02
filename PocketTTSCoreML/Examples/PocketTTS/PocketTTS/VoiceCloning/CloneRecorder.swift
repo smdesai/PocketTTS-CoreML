@@ -1,5 +1,10 @@
 //
-// CloneRecorder.swift
+//  CloneRecorder.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Thin wrapper around AVAudioRecorder + AVAudioSession for the voice-clone
 // flow. Owns:
@@ -22,26 +27,26 @@ import Foundation
 @MainActor
 final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
-    /// Fixed recording window (seconds). mimi_encoder expects exactly 4s
-    /// of audio; we stop the recorder here so the user can't record past
-    /// that and the progress bar is meaningful.
+    // Fixed recording window (seconds). mimi_encoder expects exactly 4s
+    // of audio; we stop the recorder here so the user can't record past
+    // that and the progress bar is meaningful.
     static let maxDuration: TimeInterval = 4.0
 
     @Published var isRecording: Bool = false
-    /// 0.0 → maxDuration; updated ~10 Hz while recording.
+    // 0.0 → maxDuration; updated ~10 Hz while recording.
     @Published var elapsed: TimeInterval = 0.0
-    /// Absolute URL of the last successful recording (m4a). nil until the
-    /// recorder finishes naturally or is stopped.
+    // Absolute URL of the last successful recording (m4a). nil until the
+    // recorder finishes naturally or is stopped.
     @Published var lastRecordingURL: URL? = nil
-    /// Actual duration of `lastRecordingURL` in seconds.
+    // Actual duration of `lastRecordingURL` in seconds.
     @Published var lastRecordingDuration: TimeInterval = 0.0
 
     private var recorder: AVAudioRecorder? = nil
     private var tickTask: Task<Void, Never>? = nil
 
-    /// Ask for mic permission. Returns true if granted. If previously
-    /// denied, returns false immediately — caller is responsible for
-    /// surfacing a "Go to Settings" alert.
+    // Ask for mic permission. Returns true if granted. If previously
+    // denied, returns false immediately — caller is responsible for
+    // surfacing a "Go to Settings" alert.
     static func requestPermission() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
@@ -55,15 +60,15 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
-    /// Current permission status without prompting. Used to drive the
-    /// "permission denied" banner in CloneSheet.
+    // Current permission status without prompting. Used to drive the
+    // "permission denied" banner in CloneSheet.
     static var permissionStatus: AVAuthorizationStatus {
         AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
-    /// Start recording into a fresh temp .m4a. Caller is expected to have
-    /// already awaited `requestPermission()` and confirmed it returned
-    /// true. Throws if the audio session or recorder can't be set up.
+    // Start recording into a fresh temp .m4a. Caller is expected to have
+    // already awaited `requestPermission()` and confirmed it returned
+    // true. Throws if the audio session or recorder can't be set up.
     func start() throws {
         stop()  // idempotent guard
 
@@ -129,8 +134,8 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
-    /// Stop early (before the 4s cap). Safe to call even when not
-    /// recording — it's a no-op in that case.
+    // Stop early (before the 4s cap). Safe to call even when not
+    // recording — it's a no-op in that case.
     func stop() {
         tickTask?.cancel()
         tickTask = nil
@@ -140,9 +145,9 @@ final class CloneRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Leave isRecording as-is; the delegate callback flips it.
     }
 
-    /// Drop the recorder and detach the audio session. Called when the
-    /// sheet is dismissed so the main app's TTS playback session isn't
-    /// left on .playAndRecord unnecessarily.
+    // Drop the recorder and detach the audio session. Called when the
+    // sheet is dismissed so the main app's TTS playback session isn't
+    // left on .playAndRecord unnecessarily.
     func teardown() {
         stop()
         recorder = nil
