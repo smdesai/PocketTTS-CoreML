@@ -1,11 +1,18 @@
+//
+//  MimiStateBuffer.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import CoreML
 import Foundation
 
-/// Mimi decoder packed streaming state blob (fp16 flat tensor).
-///
-/// Reads its own layout from the sidecar JSON `mimi_decoder.state_layout.json`
-/// produced alongside the `.mlpackage` at conversion time, so the Swift
-/// runtime never has to track the offsets manually.
+// Mimi decoder packed streaming state blob (fp16 flat tensor).
+//
+// Reads its own layout from the sidecar JSON `mimi_decoder.state_layout.json`
+// produced alongside the `.mlpackage` at conversion time, so the Swift
+// runtime never has to track the offsets manually.
 public struct MimiStateLayout: Sendable {
     public struct Slot: Sendable {
         public let name: String
@@ -55,10 +62,10 @@ public struct MimiStateLayout: Sendable {
     }
 }
 
-/// Two-buffer Mimi state ping-pong. The `mimi_decoder.mlpackage` is
-/// converted at FP32 compute precision (see plan §Phase 3.5 and
-/// docs/phase2_3_notes.md "mimi_decoder converted at FP32 compute precision"),
-/// so its state I/O is fp32.
+// Two-buffer Mimi state ping-pong. The `mimi_decoder.mlpackage` is
+// converted at FP32 compute precision (see plan §Phase 3.5 and
+// docs/phase2_3_notes.md "mimi_decoder converted at FP32 compute precision"),
+// so its state I/O is fp32.
 public final class MimiStateBuffer: @unchecked Sendable {
     public let layout: MimiStateLayout
     public private(set) var currentIn: MLMultiArray
@@ -81,7 +88,7 @@ public final class MimiStateBuffer: @unchecked Sendable {
         memset(ptr, 0, n)
     }
 
-    /// Swap so that the just-written `currentOut` becomes the next `currentIn`.
+    // Swap so that the just-written `currentOut` becomes the next `currentIn`.
     public func swap() {
         let tmp = currentIn
         self.currentIn = currentOut

@@ -1,39 +1,46 @@
+//
+//  Orchestrator.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Accelerate
 import CoreML
 import Foundation
 
-/// Drives the CoreML AR loop for a single utterance.
-///
-/// Accepts either flavor of `VoiceHandle`:
-///
-/// - `.prefilled`: voice + text prefill already baked into the KV cache
-///   (produced by the legacy `export_full_prefill.py`). Orchestrator goes
-///   straight to the AR loop.
-/// - `.voiceOnly`: voice-only KV prefix. Orchestrator runs
-///   `text_conditioner.mlpackage` + `flow_lm_prefill.mlpackage` to bake
-///   in the text prefill, then runs the AR loop. This is the normal path
-///   — no Python helper required.
-///
-/// Models are optional to preserve compatibility with callers that only
-/// hold AR-path artifacts (older bundles without `flow_lm_prefill.mlpackage`
-/// or `text_conditioner.mlpackage`). In that case only `.prefilled`
-/// handles work and `.voiceOnly` throws `prefillRequired`.
+// Drives the CoreML AR loop for a single utterance.
+//
+// Accepts either flavor of `VoiceHandle`:
+//
+// - `.prefilled`: voice + text prefill already baked into the KV cache
+//   (produced by the legacy `export_full_prefill.py`). Orchestrator goes
+//   straight to the AR loop.
+// - `.voiceOnly`: voice-only KV prefix. Orchestrator runs
+//   `text_conditioner.mlpackage` + `flow_lm_prefill.mlpackage` to bake
+//   in the text prefill, then runs the AR loop. This is the normal path
+//   — no Python helper required.
+//
+// Models are optional to preserve compatibility with callers that only
+// hold AR-path artifacts (older bundles without `flow_lm_prefill.mlpackage`
+// or `text_conditioner.mlpackage`). In that case only `.prefilled`
+// handles work and `.voiceOnly` throws `prefillRequired`.
 public final class Orchestrator: @unchecked Sendable {
     public struct Models {
         public let flowMain: MLModel
         public let flowFlow: MLModel
         public let mimiDecoder: MLModel
         public let mimiLayout: MimiStateLayout
-        /// Optional — required only for in-Swift text prefill.
+        // Optional — required only for in-Swift text prefill.
         public let flowPrefill: MLModel?
-        /// Optional — required only for in-Swift text prefill.
+        // Optional — required only for in-Swift text prefill.
         public let textConditioner: MLModel?
-        /// Optional — used as a fallback when the `.voiceOnly` handle
-        /// didn't carry its own bos_emb (read from
-        /// `Artifacts/.../flow_lm_bos_emb.safetensors`).
+        // Optional — used as a fallback when the `.voiceOnly` handle
+        // didn't carry its own bos_emb (read from
+        // `Artifacts/.../flow_lm_bos_emb.safetensors`).
         public let defaultBosEmb: [Float]?
-        /// Optional — required only for voice cloning (stage 2). Loaded
-        /// from `Artifacts/.../speaker_proj.safetensors`.
+        // Optional — required only for voice cloning (stage 2). Loaded
+        // from `Artifacts/.../speaker_proj.safetensors`.
         public let speakerProjection: SpeakerProjection?
 
         public init(
@@ -76,16 +83,16 @@ public final class Orchestrator: @unchecked Sendable {
         public let eosLogit: Float
     }
 
-    /// Run the AR loop for one voice and stream audio frames.
-    ///
-    /// - Parameter textTokens: int32 token ids for the prompt. Required
-    ///   when `voice` is `.voiceOnly` (the orchestrator does the text
-    ///   prefill in Swift). Ignored for `.prefilled` voices (text was
-    ///   baked into the KV cache at export time).
-    ///
-    /// The returned async stream yields PCM16 little-endian frames of 1920
-    /// samples each. Terminates either when max_gen_len is exhausted or
-    /// `framesAfterEos` frames past the first EOS trigger.
+    // Run the AR loop for one voice and stream audio frames.
+    //
+    // - Parameter textTokens: int32 token ids for the prompt. Required
+    //   when `voice` is `.voiceOnly` (the orchestrator does the text
+    //   prefill in Swift). Ignored for `.prefilled` voices (text was
+    //   baked into the KV cache at export time).
+    //
+    // The returned async stream yields PCM16 little-endian frames of 1920
+    // samples each. Terminates either when max_gen_len is exhausted or
+    // `framesAfterEos` frames past the first EOS trigger.
     public func generate(
         voice: VoiceHandle,
         textTokens: [Int32] = [],
@@ -400,14 +407,14 @@ public final class Orchestrator: @unchecked Sendable {
     // Text prefill (Swift-native path)
     // ------------------------------------------------------------
 
-    /// Run text_conditioner + flow_lm_prefill to update `voiceKV` in-place
-    /// with the text KV at slots [voiceOffset, voiceOffset + S_text).
-    /// Returns the new absolute offset (= voiceOffset + S_text).
-    ///
-    /// Inputs/outputs are fp16 end-to-end. The text_conditioner output is
-    /// padded to S_TEXT_PAD=128 (the static input width baked into that
-    /// .mlpackage). `scatter_mask` zeros out any column beyond S_text so
-    /// the padded tokens don't touch the KV cache.
+    // Run text_conditioner + flow_lm_prefill to update `voiceKV` in-place
+    // with the text KV at slots [voiceOffset, voiceOffset + S_text).
+    // Returns the new absolute offset (= voiceOffset + S_text).
+    //
+    // Inputs/outputs are fp16 end-to-end. The text_conditioner output is
+    // padded to S_TEXT_PAD=128 (the static input width baked into that
+    // .mlpackage). `scatter_mask` zeros out any column beyond S_text so
+    // the padded tokens don't touch the KV cache.
     public func runTextPrefill(
         voiceKV: MLMultiArray,
         voiceOffset: Int,
@@ -533,19 +540,19 @@ public final class Orchestrator: @unchecked Sendable {
     // Voice prefill (stage 2 of voice cloning)
     // ------------------------------------------------------------
 
-    /// Run flow_lm_prefill over a voice-derived conditioning tensor
-    /// (shape `[1, T_voice, d_model]`, already projected by
-    /// `VoiceProjection.applySpeakerProjection`) and write the resulting
-    /// voice KV into `voiceKV` at slots `[0, T_voice)`.
-    ///
-    /// Shares the `flow_lm_prefill.mlpackage` with text prefill — the
-    /// signature is identical (the bundle only sees "some conditioning of
-    /// shape `[1, S_text_pad, d_model]`"). We feed voice conditioning
-    /// where text conditioning would go; the scatter mask + attn mask
-    /// restrict writes to rows `[0, T_voice)`. `voiceKV` should be a
-    /// zero-filled rank-5 buffer (we don't preserve any prior state).
-    ///
-    /// Returns the new absolute KV offset (= `T_voice`).
+    // Run flow_lm_prefill over a voice-derived conditioning tensor
+    // (shape `[1, T_voice, d_model]`, already projected by
+    // `VoiceProjection.applySpeakerProjection`) and write the resulting
+    // voice KV into `voiceKV` at slots `[0, T_voice)`.
+    //
+    // Shares the `flow_lm_prefill.mlpackage` with text prefill — the
+    // signature is identical (the bundle only sees "some conditioning of
+    // shape `[1, S_text_pad, d_model]`"). We feed voice conditioning
+    // where text conditioning would go; the scatter mask + attn mask
+    // restrict writes to rows `[0, T_voice)`. `voiceKV` should be a
+    // zero-filled rank-5 buffer (we don't preserve any prior state).
+    //
+    // Returns the new absolute KV offset (= `T_voice`).
     public func runVoicePrefill(
         voiceKV: MLMultiArray,
         voiceConditioning: MLMultiArray

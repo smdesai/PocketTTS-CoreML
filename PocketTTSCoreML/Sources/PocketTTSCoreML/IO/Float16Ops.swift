@@ -1,9 +1,16 @@
+//
+//  Float16Ops.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Accelerate
 import Foundation
 
-/// Fast fp32 <-> fp16 bulk conversion via vImage. Allocates a temporary
-/// workspace per call; prefer using the MLMultiArray overloads below which
-/// operate in-place.
+// Fast fp32 <-> fp16 bulk conversion via vImage. Allocates a temporary
+// workspace per call; prefer using the MLMultiArray overloads below which
+// operate in-place.
 public enum Float16Ops {
     public static func fp32ToFp16(_ src: [Float]) -> [UInt16] {
         var input = src
@@ -62,7 +69,7 @@ public enum Float16Ops {
         return output
     }
 
-    /// Convert a planar fp32 memory buffer to fp16 in-place (dst has same length, half byte count).
+    // Convert a planar fp32 memory buffer to fp16 in-place (dst has same length, half byte count).
     public static func convertFp32ToFp16(
         srcPtr: UnsafePointer<Float>, dstPtr: UnsafeMutablePointer<UInt16>, count: Int
     ) {
@@ -77,7 +84,7 @@ public enum Float16Ops {
         vImageConvert_PlanarFtoPlanar16F(&srcBuf, &dstBuf, 0)
     }
 
-    /// Convert a planar fp16 memory buffer to fp32.
+    // Convert a planar fp16 memory buffer to fp32.
     public static func convertFp16ToFp32(
         srcPtr: UnsafePointer<UInt16>, dstPtr: UnsafeMutablePointer<Float>, count: Int
     ) {

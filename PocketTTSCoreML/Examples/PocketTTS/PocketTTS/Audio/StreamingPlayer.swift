@@ -1,5 +1,10 @@
 //
-// StreamingPlayer.swift
+//  StreamingPlayer.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // AVAudioEngine-backed player for both non-streaming full-utterance playback
 // and streaming sentence-chunk playback. PCM input is 24 kHz int16 LE mono;
@@ -20,12 +25,12 @@ public final class StreamingPlayer: ObservableObject {
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
-    /// Format the buffers we schedule are in. 24 kHz mono float32.
+    // Format the buffers we schedule are in. 24 kHz mono float32.
     private let sourceFormat: AVAudioFormat
-    /// Monotonic count of buffers scheduled on the current stream. Used so
-    /// each completion handler knows its own finish-index; reading
-    /// `currentChunk` at schedule time would be racy since all chunks can
-    /// be queued before any finishes.
+    // Monotonic count of buffers scheduled on the current stream. Used so
+    // each completion handler knows its own finish-index; reading
+    // `currentChunk` at schedule time would be racy since all chunks can
+    // be queued before any finishes.
     private var scheduledCount: Int = 0
 
     public init(sampleRate: Double = 24000) {
@@ -41,22 +46,22 @@ public final class StreamingPlayer: ObservableObject {
 
     // MARK: - Audio session
 
-    /// Configure the shared AVAudioSession for playback.
-    /// Safe to call multiple times.
-    ///
-    /// Uses `.default` mode + `.mixWithOthers` rather than `.spokenAudio`:
-    /// `.spokenAudio` interacts poorly with iOS ReplayKit screen recording —
-    /// the recorder captures no audio and generation itself slows down under
-    /// thermal pressure. `.default` + `.mixWithOthers` captures correctly in
-    /// screen recordings and has no downside for our TTS playback.
+    // Configure the shared AVAudioSession for playback.
+    // Safe to call multiple times.
+    //
+    // Uses `.default` mode + `.mixWithOthers` rather than `.spokenAudio`:
+    // `.spokenAudio` interacts poorly with iOS ReplayKit screen recording —
+    // the recorder captures no audio and generation itself slows down under
+    // thermal pressure. `.default` + `.mixWithOthers` captures correctly in
+    // screen recordings and has no downside for our TTS playback.
     public func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try session.setActive(true, options: [])
     }
 
-    /// Start the audio engine if not already running. Must be called on a
-    /// freshly-attached configureAudioSession.
+    // Start the audio engine if not already running. Must be called on a
+    // freshly-attached configureAudioSession.
     public func startEngineIfNeeded() throws {
         guard !engine.isRunning else { return }
         try engine.start()
@@ -64,8 +69,8 @@ public final class StreamingPlayer: ObservableObject {
 
     // MARK: - Non-streaming playback
 
-    /// Play a full PCM buffer (int16 LE 24 kHz mono). Used by the Play
-    /// button after a non-streaming generate.
+    // Play a full PCM buffer (int16 LE 24 kHz mono). Used by the Play
+    // button after a non-streaming generate.
     public func play(fullPCM data: Data, sampleRate: Double = 24000) throws {
         try configureAudioSession()
         try startEngineIfNeeded()
@@ -87,8 +92,8 @@ public final class StreamingPlayer: ObservableObject {
 
     // MARK: - Streaming playback
 
-    /// Prepare the player for a sentence-chunk stream. Must be called once
-    /// before the first `pushChunk`.
+    // Prepare the player for a sentence-chunk stream. Must be called once
+    // before the first `pushChunk`.
     public func startStream(totalChunks: Int) throws {
         try configureAudioSession()
         try startEngineIfNeeded()
@@ -99,9 +104,9 @@ public final class StreamingPlayer: ObservableObject {
         self.isPlaying = true
     }
 
-    /// Schedule one sentence's worth of PCM data. AVAudioPlayerNode queues
-    /// buffers in order, so we can schedule as they arrive without any
-    /// manual ring buffer. The completion handler advances `currentChunk`.
+    // Schedule one sentence's worth of PCM data. AVAudioPlayerNode queues
+    // buffers in order, so we can schedule as they arrive without any
+    // manual ring buffer. The completion handler advances `currentChunk`.
     public func pushChunk(_ data: Data, sampleRate: Double = 24000) {
         guard let buffer = pcmBuffer(fromInt16LE: data, sampleRate: sampleRate) else {
             return
@@ -128,8 +133,8 @@ public final class StreamingPlayer: ObservableObject {
         }
     }
 
-    /// Stop the stream. Any remaining buffered chunks are dropped and the
-    /// player returns to an idle state immediately.
+    // Stop the stream. Any remaining buffered chunks are dropped and the
+    // player returns to an idle state immediately.
     public func stopStream() {
         stopAndReset()
         isPlaying = false
@@ -147,8 +152,8 @@ public final class StreamingPlayer: ObservableObject {
         player.reset()
     }
 
-    /// Convert a Data blob of int16 LE 24 kHz mono samples to an
-    /// AVAudioPCMBuffer matching `sourceFormat`.
+    // Convert a Data blob of int16 LE 24 kHz mono samples to an
+    // AVAudioPCMBuffer matching `sourceFormat`.
     private func pcmBuffer(
         fromInt16LE data: Data, sampleRate: Double
     ) -> AVAudioPCMBuffer? {

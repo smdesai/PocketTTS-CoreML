@@ -1,5 +1,10 @@
 //
-// CloneSheet.swift
+//  CloneSheet.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Modal flow for cloning a new voice. Presented from VoiceListSheet's
 // "+ Clone new voice" row. Lets the user either:
@@ -32,12 +37,12 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct CloneSheet: View {
-    /// Injected: parent view model. Sheet calls `viewModel.cloneVoice(from:named:)`
-    /// and then `viewModel.refreshVoices(selectingID:)` on success.
+    // Injected: parent view model. Sheet calls `viewModel.cloneVoice(from:named:)`
+    // and then `viewModel.refreshVoices(selectingID:)` on success.
     let viewModel: TTSViewModel
-    /// Called after a successful clone with the new voice's id (filename
-    /// stem). Parent is responsible for dismissing the sheet and
-    /// refreshing its own voice picker if needed.
+    // Called after a successful clone with the new voice's id (filename
+    // stem). Parent is responsible for dismissing the sheet and
+    // refreshing its own voice picker if needed.
     let onCloned: (String) -> Void
     let onCancel: () -> Void
 
@@ -62,8 +67,8 @@ struct CloneSheet: View {
 
     // MARK: - Derived flags
 
-    /// Cloning is only possible if the current language's artifacts
-    /// contain `speaker_proj.safetensors`. Computed at sheet-open time.
+    // Cloning is only possible if the current language's artifacts
+    // contain `speaker_proj.safetensors`. Computed at sheet-open time.
     private var cloningAvailable: Bool {
         VoiceCatalog.cloningAvailable(for: viewModel.selectedLanguage)
     }

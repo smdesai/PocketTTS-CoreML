@@ -1,8 +1,8 @@
 //
-// PocketTTSApp.swift
+//  PocketTTSApp.swift
+//  PocketTTS
 //
-// Entry point for the PocketTTS SwiftUI demo. One window, one view.
-// All heavy lifting happens in TTSViewModel.
+//  Created by Sachin Desai on 5/3/26.
 //
 
 import SwiftUI

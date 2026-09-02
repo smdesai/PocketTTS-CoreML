@@ -1,5 +1,10 @@
 //
-// MemoryMonitor.swift
+//  MemoryMonitor.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Samples the process's physical footprint (the same metric iOS Jetsam
 // uses to decide which app to kill under memory pressure) via
@@ -11,8 +16,8 @@ import Darwin
 import Foundation
 
 public enum MemoryMonitor {
-    /// Current process physical footprint in bytes. Returns 0 if the
-    /// kernel call fails (shouldn't happen in practice on iOS/macOS).
+    // Current process physical footprint in bytes. Returns 0 if the
+    // kernel call fails (shouldn't happen in practice on iOS/macOS).
     public static func physFootprintBytes() -> UInt64 {
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(
@@ -37,9 +42,9 @@ public enum MemoryMonitor {
     }
 }
 
-/// Samples memory on a background Task at a fixed interval and tracks
-/// the peak observed. Start with `start()`, stop with `stop()` which
-/// returns the peak in MB.
+// Samples memory on a background Task at a fixed interval and tracks
+// the peak observed. Start with `start()`, stop with `stop()` which
+// returns the peak in MB.
 @MainActor
 public final class PeakMemoryTracker {
     private var task: Task<Void, Never>? = nil
@@ -47,8 +52,8 @@ public final class PeakMemoryTracker {
 
     public init() {}
 
-    /// Reset peak to the current footprint and begin polling every
-    /// `intervalMS` milliseconds.
+    // Reset peak to the current footprint and begin polling every
+    // `intervalMS` milliseconds.
     public func start(intervalMS: UInt64 = 100) {
         stop()
         peakMB = MemoryMonitor.physFootprintMB()
@@ -64,9 +69,9 @@ public final class PeakMemoryTracker {
         }
     }
 
-    /// Cancel the polling task and return the peak observed since start().
-    /// Also samples one final time in case a burst happened between the
-    /// last poll and stop().
+    // Cancel the polling task and return the peak observed since start().
+    // Also samples one final time in case a burst happened between the
+    // last poll and stop().
     @discardableResult
     public func stop() -> Double {
         task?.cancel()

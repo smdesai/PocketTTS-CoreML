@@ -1,5 +1,10 @@
 //
-// ModelDownloader.swift
+//  ModelDownloader.swift
+//  PocketTTS
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 //
 // Downloads a language's CoreML artifacts + tokenizer + voices from the
 // Hugging Face Hub into the app's Application Support directory on first
@@ -29,35 +34,35 @@
 
 import Foundation
 
-/// Repository-level configuration for the Hugging Face download source.
+// Repository-level configuration for the Hugging Face download source.
 public enum HFRepo {
-    /// Owner + repo name on huggingface.co. Files are resolved from
-    /// `https://huggingface.co/<id>/resolve/main/<path>`.
+    // Owner + repo name on huggingface.co. Files are resolved from
+    // `https://huggingface.co/<id>/resolve/main/<path>`.
     public static let id: String = "smdesai/pocket-tts-coreml"
-    /// Git revision. "main" tracks the latest commit on the default branch.
+    // Git revision. "main" tracks the latest commit on the default branch.
     public static let revision: String = "main"
 }
 
-/// Download progress snapshot emitted on the main actor during a language
-/// download. Consumers render a progress bar + byte counter from this.
+// Download progress snapshot emitted on the main actor during a language
+// download. Consumers render a progress bar + byte counter from this.
 public struct DownloadProgress: Sendable, Equatable {
-    /// Bytes completed so far (sum across all files).
+    // Bytes completed so far (sum across all files).
     public let bytesCompleted: Int64
-    /// Total bytes expected (sum across all files). Zero while the file
-    /// list is still being fetched, since HF's tree API doesn't include
-    /// sizes for LFS-pointered files cheaply — we only know totals once
-    /// the first range response comes back, so we report total as
-    /// "currently observed max" which may grow mid-download. UI should
-    /// tolerate this by showing a percentage only when total > 0.
+    // Total bytes expected (sum across all files). Zero while the file
+    // list is still being fetched, since HF's tree API doesn't include
+    // sizes for LFS-pointered files cheaply — we only know totals once
+    // the first range response comes back, so we report total as
+    // "currently observed max" which may grow mid-download. UI should
+    // tolerate this by showing a percentage only when total > 0.
     public let bytesTotal: Int64
-    /// 1-indexed position of the file currently downloading. Zero while
-    /// the file list is still being built.
+    // 1-indexed position of the file currently downloading. Zero while
+    // the file list is still being built.
     public let currentFileIndex: Int
-    /// Total number of files to download for this language.
+    // Total number of files to download for this language.
     public let totalFiles: Int
-    /// Human-readable name of the file currently downloading (relative
-    /// path under the language directory). Empty while the list is being
-    /// built.
+    // Human-readable name of the file currently downloading (relative
+    // path under the language directory). Empty while the list is being
+    // built.
     public let currentFileName: String
 
     public static let zero = DownloadProgress(
@@ -67,8 +72,8 @@ public struct DownloadProgress: Sendable, Equatable {
     )
 }
 
-/// Errors surfaced by the downloader. All cases include a user-facing
-/// description via `LocalizedError`.
+// Errors surfaced by the downloader. All cases include a user-facing
+// description via `LocalizedError`.
 public enum ModelDownloadError: LocalizedError {
     case networkError(String)
     case httpStatus(Int, String)
@@ -87,21 +92,21 @@ public enum ModelDownloadError: LocalizedError {
     }
 }
 
-/// Downloads a language bundle from Hugging Face into Application Support.
-///
-/// Usage:
-///   let dl = ModelDownloader()
-///   try await dl.ensureLanguageInstalled("english") { progress in
-///       // update UI
-///   }
+// Downloads a language bundle from Hugging Face into Application Support.
+//
+// Usage:
+//   let dl = ModelDownloader()
+//   try await dl.ensureLanguageInstalled("english") { progress in
+//       // update UI
+//   }
 public final class ModelDownloader: Sendable {
 
     public init() {}
 
     // MARK: - Paths
 
-    /// Root directory where all language bundles live on-device. Created
-    /// on demand; survives app restarts; excluded from iCloud backup.
+    // Root directory where all language bundles live on-device. Created
+    // on demand; survives app restarts; excluded from iCloud backup.
     public static func rootDirectory() -> URL {
         let fm = FileManager.default
         let base: URL
@@ -123,8 +128,8 @@ public final class ModelDownloader: Sendable {
         return root
     }
 
-    /// Directory for `configName` (e.g. "english", "french_24l"). Created
-    /// on demand. Matches the folder layout in the Hugging Face repo.
+    // Directory for `configName` (e.g. "english", "french_24l"). Created
+    // on demand. Matches the folder layout in the Hugging Face repo.
     public static func languageDirectory(configName: String) -> URL {
         let dir = rootDirectory().appendingPathComponent(configName, isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
@@ -135,9 +140,9 @@ public final class ModelDownloader: Sendable {
         return dir
     }
 
-    /// True if `configName` has been fully downloaded previously (sentinel
-    /// file exists). Does NOT re-validate every artifact — the sentinel is
-    /// only written after every file has been successfully written.
+    // True if `configName` has been fully downloaded previously (sentinel
+    // file exists). Does NOT re-validate every artifact — the sentinel is
+    // only written after every file has been successfully written.
     public static func isInstalled(configName: String) -> Bool {
         let sentinel = languageDirectory(configName: configName)
             .appendingPathComponent(".complete")
@@ -146,11 +151,11 @@ public final class ModelDownloader: Sendable {
 
     // MARK: - Public API
 
-    /// Ensure the bundle for `configName` is installed locally. If it
-    /// already is (sentinel present), returns immediately. Otherwise
-    /// fetches the file list from the HF tree API and downloads each file
-    /// in sequence. Progress is reported via `onProgress` on the main
-    /// actor.
+    // Ensure the bundle for `configName` is installed locally. If it
+    // already is (sentinel present), returns immediately. Otherwise
+    // fetches the file list from the HF tree API and downloads each file
+    // in sequence. Progress is reported via `onProgress` on the main
+    // actor.
     @MainActor
     public func ensureLanguageInstalled(
         configName: String,
@@ -243,18 +248,18 @@ public final class ModelDownloader: Sendable {
     // MARK: - Internal
 
     fileprivate struct RemoteFile: Sendable {
-        /// Path relative to the language directory, e.g.
-        /// "flow_lm_main.mlmodelc/weights/weight.bin" or
-        /// "voices/alba.safetensors". Never starts with `/`.
+        // Path relative to the language directory, e.g.
+        // "flow_lm_main.mlmodelc/weights/weight.bin" or
+        // "voices/alba.safetensors". Never starts with `/`.
         let relativePath: String
-        /// Size in bytes as reported by the HF tree API. For LFS files
-        /// this is already the resolved size (not a pointer size). 0 if
-        /// the API didn't report it for some reason.
+        // Size in bytes as reported by the HF tree API. For LFS files
+        // this is already the resolved size (not a pointer size). 0 if
+        // the API didn't report it for some reason.
         let size: Int64
     }
 
-    /// Build the `resolve` URL for a single file. Pattern:
-    /// https://huggingface.co/<repo>/resolve/<rev>/<configName>/<relPath>
+    // Build the `resolve` URL for a single file. Pattern:
+    // https://huggingface.co/<repo>/resolve/<rev>/<configName>/<relPath>
     fileprivate static func downloadURL(
         configName: String, relativePath: String
     ) -> URL {
@@ -269,9 +274,9 @@ public final class ModelDownloader: Sendable {
         return u
     }
 
-    /// Recursively enumerate every file under `<repo>/<configName>/` via
-    /// the HF tree API. Returns flat list of file paths relative to the
-    /// language directory.
+    // Recursively enumerate every file under `<repo>/<configName>/` via
+    // the HF tree API. Returns flat list of file paths relative to the
+    // language directory.
     fileprivate func fetchFileList(configName: String) async throws -> [RemoteFile] {
         var out: [RemoteFile] = []
         try await walkTree(configName: configName, subpath: "", into: &out)
@@ -279,7 +284,7 @@ public final class ModelDownloader: Sendable {
         return out
     }
 
-    /// HF tree API entry shape. We only decode the fields we use.
+    // HF tree API entry shape. We only decode the fields we use.
     private struct TreeEntry: Decodable {
         let type: String  // "file" or "directory"
         let path: String  // full path from repo root, e.g. "english/voices/alba.safetensors"
@@ -334,8 +339,8 @@ public final class ModelDownloader: Sendable {
         }
     }
 
-    /// URLSession configured for large downloads: no caching (we stream
-    /// straight to disk) and a generous resource timeout.
+    // URLSession configured for large downloads: no caching (we stream
+    // straight to disk) and a generous resource timeout.
     private func urlSession() -> URLSession {
         let config = URLSessionConfiguration.default
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -345,10 +350,10 @@ public final class ModelDownloader: Sendable {
         return URLSession(configuration: config)
     }
 
-    /// Stream a single URL to `destURL`, reporting incremental written
-    /// byte counts via `onBytes`. Uses `URLSession.bytes(for:)` so we can
-    /// control the write loop (needed for cancellation + progress without
-    /// relying on delegates).
+    // Stream a single URL to `destURL`, reporting incremental written
+    // byte counts via `onBytes`. Uses `URLSession.bytes(for:)` so we can
+    // control the write loop (needed for cancellation + progress without
+    // relying on delegates).
     private func downloadFile(
         from url: URL,
         to destURL: URL,

@@ -1,13 +1,20 @@
+//
+//  Masks.swift
+//  PocketTTSCoreML
+//
+//  Created by Sachin Desai on 5/3/26.
+//
+
 import Accelerate
 import CoreML
 import Foundation
 
-/// Attention mask builders — ports of `pockettts_coreml.patches.transformer_patched`
-/// helpers used by the reference Python driver. These are called OUTSIDE the
-/// traced CoreML graph and passed in as tensor inputs (`attn_mask`,
-/// `offset_mask`, `scatter_mask`).
+// Attention mask builders — ports of `pockettts_coreml.patches.transformer_patched`
+// helpers used by the reference Python driver. These are called OUTSIDE the
+// traced CoreML graph and passed in as tensor inputs (`attn_mask`,
+// `offset_mask`, `scatter_mask`).
 public enum Masks {
-    /// fp16-safe "-infinity" additive mask value.
+    // fp16-safe "-infinity" additive mask value.
     public static let attnMaskNeg: Float = -65_504
     public static let attnMaskNegFp16Bits: UInt16 = 0xFBFF
     public static let oneFp16Bits: UInt16 = 0x3C00
@@ -140,14 +147,14 @@ public enum Masks {
 
     // MARK: - Padded prefill helpers (flow_lm_prefill.mlpackage)
 
-    /// Scatter mask for the padded flow_lm_prefill graph.
-    ///
-    /// Shape `[1, sCapacity, sTextPad]`. Column `j` for `j in [0, sText)`
-    /// is one-hot at row `startOffset + j`; columns `j in [sText, sTextPad)`
-    /// are zero (padding — their rows in text_embeddings are also zero/
-    /// ignored, and a zero column leaves the KV cache untouched at every
-    /// slot). Matches the `_build_example_inputs` construction in
-    /// `convert_flow_lm_prefill.py`.
+    // Scatter mask for the padded flow_lm_prefill graph.
+    //
+    // Shape `[1, sCapacity, sTextPad]`. Column `j` for `j in [0, sText)`
+    // is one-hot at row `startOffset + j`; columns `j in [sText, sTextPad)`
+    // are zero (padding — their rows in text_embeddings are also zero/
+    // ignored, and a zero column leaves the KV cache untouched at every
+    // slot). Matches the `_build_example_inputs` construction in
+    // `convert_flow_lm_prefill.py`.
     public static func scatterPrefillMaskFp16Padded(
         startOffset: Int, sText: Int, sTextPad: Int, sCapacity: Int
     ) throws -> MLMultiArray {
@@ -167,12 +174,12 @@ public enum Masks {
         return arr
     }
 
-    /// Additive attention mask for the padded flow_lm_prefill graph.
-    ///
-    /// Shape `[1, 1, sTextPad, sCapacity]`. Rows `i in [0, sText)` are
-    /// causal over `[0, startOffset + i]`. Rows `i in [sText, sTextPad)`
-    /// copy the last real row (i = sText - 1) so softmax stays finite
-    /// — since their scatter columns are zero, they don't mutate the KV.
+    // Additive attention mask for the padded flow_lm_prefill graph.
+    //
+    // Shape `[1, 1, sTextPad, sCapacity]`. Rows `i in [0, sText)` are
+    // causal over `[0, startOffset + i]`. Rows `i in [sText, sTextPad)`
+    // copy the last real row (i = sText - 1) so softmax stays finite
+    // — since their scatter columns are zero, they don't mutate the KV.
     public static func additiveAttentionMaskPrefillFp16Padded(
         startOffset: Int, sText: Int, sTextPad: Int, sCapacity: Int
     ) throws -> MLMultiArray {
@@ -221,8 +228,8 @@ public enum Masks {
         return output
     }
 
-    /// `build_additive_attention_mask_step`
-    /// Output shape `[1, 1, 1, s_capacity]`. Visible where pos_k ∈ [lo, offset].
+    // `build_additive_attention_mask_step`
+    // Output shape `[1, 1, 1, s_capacity]`. Visible where pos_k ∈ [lo, offset].
     public static func additiveAttentionMaskStep(
         offset: Int, sCapacity: Int, context: Int? = nil
     ) throws -> MLMultiArray {
@@ -254,8 +261,8 @@ public enum Masks {
         }
     }
 
-    /// `build_one_hot_offset_mask`
-    /// Output shape `[1, s_capacity]`. 1.0 at position `offset`, 0 elsewhere.
+    // `build_one_hot_offset_mask`
+    // Output shape `[1, s_capacity]`. 1.0 at position `offset`, 0 elsewhere.
     public static func oneHotOffsetMask(offset: Int, sCapacity: Int) throws -> MLMultiArray {
         let shape: [NSNumber] = [1, NSNumber(value: sCapacity)]
         let arr = try MLMultiArray(shape: shape, dataType: .float32)
@@ -269,8 +276,8 @@ public enum Masks {
         return arr
     }
 
-    /// `build_scatter_prefill_mask`
-    /// Output shape `[1, s_capacity, prefill_len]`.
+    // `build_scatter_prefill_mask`
+    // Output shape `[1, s_capacity, prefill_len]`.
     public static func scatterPrefillMask(
         startOffset: Int, prefillLen: Int, sCapacity: Int
     ) throws -> MLMultiArray {
@@ -304,8 +311,8 @@ public enum Masks {
         }
     }
 
-    /// `build_additive_attention_mask_prefill`
-    /// Output shape `[1, 1, prefill_len, s_capacity]`.
+    // `build_additive_attention_mask_prefill`
+    // Output shape `[1, 1, prefill_len, s_capacity]`.
     public static func additiveAttentionMaskPrefill(
         startOffset: Int, prefillLen: Int, sCapacity: Int, context: Int? = nil
     ) throws -> MLMultiArray {

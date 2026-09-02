@@ -192,6 +192,7 @@ def convert(
     save_path: Path,
     language: str = "english",
     palettize_bits: int | None = None,
+    linear_quantize_bits: int | None = None,
 ) -> None:
     # Selective fp32 softmax: default ON. See convert_flow_lm_main.py for
     # rationale and `docs/investigations/fp16_drift_localization.md` for
@@ -254,10 +255,19 @@ def convert(
         name="flow_lm_prefill", precision=precision,
     )
 
+    if palettize_bits is not None and linear_quantize_bits is not None:
+        raise SystemExit(
+            "Cannot set both --palettize-bits and --linear-quantize-bits; "
+            "pick one compression scheme."
+        )
+
     if palettize_bits is not None:
         # See convert_flow_lm_main.py for rationale on ordering
         # (palettize AFTER fp32-softmax pass) and on the
-        # per_grouped_channel + group_size=16 choice.
+        # per_grouped_channel + group_size=16 choice. Palettization
+        # lowers to constexpr_lut_to_dense which is only ANE-fast at
+        # nbits<=4; 6/8-bit typically routes to GPU on iOS. Prefer
+        # --linear-quantize-bits 8 for ANE-resident int8.
         from coremltools.optimize.coreml import (
             OpPalettizerConfig,
             OptimizationConfig,
@@ -279,6 +289,36 @@ def convert(
         mlmodel = palettize_weights(mlmodel, opt_config)
         LOGGER.info(
             "flow_lm_prefill: palettization done in %.1fs; re-saving to %s",
+            _time.time() - _t0, save_path,
+        )
+        mlmodel.save(str(save_path))
+
+    if linear_quantize_bits is not None:
+        # See convert_flow_lm_main.py for rationale. Linear symmetric
+        # per-channel int8 lowers to constexpr_affine_dequantize, which
+        # ANE runs natively at int8 — halves weight size vs fp16 while
+        # keeping the model ANE-resident for background audio.
+        from coremltools.optimize.coreml import (
+            OpLinearQuantizerConfig,
+            OptimizationConfig,
+            linear_quantize_weights,
+        )
+        LOGGER.info(
+            "flow_lm_prefill: applying %d-bit linear weight quantization "
+            "(linear_symmetric, per_channel) ...",
+            linear_quantize_bits,
+        )
+        import time as _time
+        _t0 = _time.time()
+        op_config = OpLinearQuantizerConfig(
+            mode="linear_symmetric",
+            dtype=f"int{linear_quantize_bits}",
+            granularity="per_channel",
+        )
+        opt_config = OptimizationConfig(global_config=op_config)
+        mlmodel = linear_quantize_weights(mlmodel, opt_config)
+        LOGGER.info(
+            "flow_lm_prefill: linear quantization done in %.1fs; re-saving to %s",
             _time.time() - _t0, save_path,
         )
         mlmodel.save(str(save_path))
@@ -325,7 +365,17 @@ def main(argv: list[str] | None = None) -> int:
         "--palettize-bits", type=int, default=None,
         help="If set, apply k-means weight palettization at N bits "
              "(typical: 6 or 8) after the fp32-softmax MIL pass. "
+             "Produces constexpr_lut_to_dense weights — only ANE-friendly "
+             "at nbits<=4; 6/8-bit tend to fall back to GPU on iOS. "
              "Default: no palettization (preserves fp16 behavior).",
+    )
+    p.add_argument(
+        "--linear-quantize-bits", type=int, default=None,
+        help="If set, apply linear_symmetric per-channel weight quantization "
+             "at N bits (typical: 8). Produces constexpr_affine_dequantize "
+             "weights which ANE runs natively at int8 — use this for models "
+             "that must stay on ANE (e.g. for background audio). Mutually "
+             "exclusive with --palettize-bits. Default: no quantization.",
     )
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args(argv)
@@ -335,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         save_path,
         language=args.language,
         palettize_bits=args.palettize_bits,
+        linear_quantize_bits=args.linear_quantize_bits,
     )
     return 0
 
